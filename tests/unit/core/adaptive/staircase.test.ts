@@ -2,12 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { Staircase } from '~/core/adaptive/staircase';
 
 describe('Staircase (Levitt n-down/m-up)', () => {
-  it('3-down/1-up converges toward ~79% threshold', () => {
-    const s = new Staircase({ start: 50, step: 2, nDown: 3, nUp: 1, minStep: 1 });
-    // simulate: 3 correct → step down, 1 wrong → step up
+  it('3-down/1-up with shrinkAt halves step at first reversal', () => {
+    const s = new Staircase({ start: 50, step: 2, nDown: 3, nUp: 1, minStep: 1, shrinkAt: [1] });
     s.update(true); s.update(true); s.update(true); // down
     expect(s.current).toBe(48);
-    s.update(false); // up
+    s.update(false); // up — triggers reversal #1, step halves to 1
     expect(s.current).toBe(49);
   });
 

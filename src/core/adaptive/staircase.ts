@@ -21,7 +21,7 @@ export class Staircase {
   private readonly opts: StaircaseOptions;
 
   constructor(options: StaircaseOptions) {
-    this.opts = { shrinkAt: [1], ...options };
+    this.opts = { ...options };
     this.current = options.start;
     this.step = options.step;
   }
