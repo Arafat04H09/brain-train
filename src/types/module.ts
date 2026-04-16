@@ -7,7 +7,8 @@ export type ModuleId =
   | 'compound-ef'
   | 'relational'
   | 'calibration'
-  | 'placeholder';
+  | 'placeholder'
+  | 'transfer-battery';
 
 export interface TrainingModule {
   id: ModuleId;

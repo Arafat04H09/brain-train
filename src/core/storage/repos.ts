@@ -86,3 +86,16 @@ export async function saveMetacogPrediction(row: {
     [row.blockId, row.predictedAccuracy, row.actualAccuracy ?? null, row.brierContribution ?? null]
   );
 }
+
+export async function saveTransferAssessment(row: {
+  ts: number;
+  taskId: string;
+  score: number;
+  raw: unknown;
+}): Promise<void> {
+  await dbExec(
+    `INSERT INTO transfer_assessments(id, ts, task_id, score, raw_json)
+     VALUES(?, ?, ?, ?, ?)`,
+    [crypto.randomUUID(), row.ts, row.taskId, row.score, JSON.stringify(row.raw)]
+  );
+}

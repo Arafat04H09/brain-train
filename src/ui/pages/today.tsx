@@ -14,7 +14,7 @@ async function buildPlan() {
   const oneHourAgo = Date.now() - 3600_000;
   await dbExec('DELETE FROM sessions WHERE completed = 0 AND start_ts < ?', [oneHourAgo]);
   const states: DomainState[] = [];
-  for (const m of listModules().filter(m => m.id !== 'placeholder')) {
+  for (const m of listModules().filter(m => m.id !== 'placeholder' && m.id !== 'transfer-battery')) {
     const s = await getDomainState(m.id) ?? {
       moduleId: m.id, level: {}, ewmaPerformance: 0,
       lastSessionTs: null, sessionsTotal: 0,

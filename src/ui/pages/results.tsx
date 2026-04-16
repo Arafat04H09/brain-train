@@ -153,6 +153,46 @@ export function Results() {
               </table>
             </Show>
 
+            <Show when={d().blocks.some(b => b.module_id === 'transfer-battery')}>
+              <div style="margin-top:2rem">
+                <h3>Transfer Assessment</h3>
+                <table style="width:100%;border-collapse:collapse;font-size:.9rem">
+                  <thead>
+                    <tr style="border-bottom:1px solid #2a2f38;text-align:left">
+                      <th style="padding:.4rem">Task</th>
+                      <th style="padding:.4rem">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style="border-bottom:1px solid #1a1e24">
+                      <td style="padding:.4rem"><b>ICAR Matrix (Reasoning)</b></td>
+                      <td style="padding:.4rem">
+                        {(() => {
+                          const matrixBlock = d().blocks.find(b => b.kind === 'assessment-matrix');
+                          const matrixAcc = matrixBlock && d().trialsByBlock.get(matrixBlock.id)
+                            ? d().trialsByBlock.get(matrixBlock.id)!.correct / d().trialsByBlock.get(matrixBlock.id)!.total
+                            : null;
+                          return matrixAcc !== null ? (matrixAcc * 100).toFixed(0) + '%' : '—';
+                        })()}
+                      </td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #1a1e24">
+                      <td style="padding:.4rem"><b>Simple Reaction Time</b></td>
+                      <td style="padding:.4rem">
+                        {(() => {
+                          const rtBlock = d().blocks.find(b => b.kind === 'simple-rt');
+                          const rtMean = rtBlock && d().trialsByBlock.get(rtBlock.id)
+                            ? d().trialsByBlock.get(rtBlock.id)!.avg_rt
+                            : null;
+                          return rtMean !== null ? Math.round(rtMean) + 'ms' : '—';
+                        })()}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Show>
+
             <Show when={d().calibration}>
               {c => (
                 <div style="margin-top:2rem">

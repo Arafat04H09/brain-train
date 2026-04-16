@@ -370,4 +370,20 @@ function drawStimulus(trial: Trial) {
       ctx.fillText(String(i + 1), x + choiceCellSize / 2, y + choiceCellSize - 10);
     }
   }
+
+  if (trial.stimulus.kind === 'simple-rt') {
+    // Draw white dot in center for reaction time task
+    const cx = w / 2, cy = h / 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw instruction text
+    ctx.fillStyle = '#888';
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Press SPACE as fast as possible', w / 2, cy - 60);
+  }
 }
