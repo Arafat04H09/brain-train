@@ -1,0 +1,16 @@
+:root {
+  --bg: #0b0d10;
+  --fg: #e6e6e6;
+  --accent: #7aa2ff;
+  --muted: #7c8088;
+  --panel: #14181e;
+  font-family: system-ui, sans-serif;
+}
+html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(--fg); }
+button { background: var(--panel); color: var(--fg); border: 1px solid var(--muted);
+  padding: .6rem 1rem; border-radius: .25rem; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+a { color: var(--accent); text-decoration: none; }
+.container { max-width: 640px; margin: 2rem auto; padding: 1rem; }
+.hero { font-size: 1.5rem; margin-bottom: 1rem; }
+.muted { color: var(--muted); font-size: .9rem; }
