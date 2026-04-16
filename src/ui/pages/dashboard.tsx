@@ -29,7 +29,7 @@ interface TransferRow {
 
 // Task display metadata. `lowerIsBetter` for RT tasks; higher-is-better for accuracy tasks.
 const TRANSFER_TASK_META: Record<string, { label: string; lowerIsBetter: boolean; unit: string }> = {
-  'icar-matrix': { label: 'ICAR Matrix (Reasoning)', lowerIsBetter: false, unit: '% correct' },
+  'matrix-reasoning': { label: 'Matrix Reasoning', lowerIsBetter: false, unit: '% correct' },
   'simple-rt': { label: 'Simple Reaction Time', lowerIsBetter: true, unit: 'ms' }
 };
 

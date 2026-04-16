@@ -117,7 +117,7 @@ async function loadResults(sessionId: string) {
 }
 
 const TRANSFER_TASKS: Array<{ id: string; label: string; lowerIsBetter: boolean; fmt: (v: number) => string }> = [
-  { id: 'icar-matrix', label: 'ICAR Matrix (Reasoning)', lowerIsBetter: false, fmt: v => `${(v * 100).toFixed(0)}%` },
+  { id: 'matrix-reasoning', label: 'Matrix Reasoning', lowerIsBetter: false, fmt: v => `${(v * 100).toFixed(0)}%` },
   { id: 'simple-rt', label: 'Simple Reaction Time', lowerIsBetter: true, fmt: v => `${Math.round(v)} ms` }
 ];
 

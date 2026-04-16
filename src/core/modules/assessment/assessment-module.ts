@@ -174,7 +174,7 @@ export const assessmentModule: TrainingModule = {
         Promise.all([
           saveTransferAssessment({
             ts: now,
-            taskId: 'icar-matrix',
+            taskId: 'matrix-reasoning',
             score: matrixAccuracy,
             raw: { correctItems: matrixCorrect, totalItems: MATRIX_TRIALS }
           }),
