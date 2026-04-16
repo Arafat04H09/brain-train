@@ -5,7 +5,8 @@ export type StimulusKind =
   | 'flanker-compound'
   | 'matrix-3x3'
   | 'calibration-mcq'
-  | 'text-question';
+  | 'text-question'
+  | 'complex-span';
 
 export interface StimulusDescriptor {
   kind: StimulusKind;

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { CALIBRATION_ITEMS } from '~/core/modules/calibration/question-bank';
 
 describe('Question bank', () => {
-  it('has at least 50 items', () => {
-    expect(CALIBRATION_ITEMS.length).toBeGreaterThanOrEqual(50);
+  it('has at least 300 items', () => {
+    expect(CALIBRATION_ITEMS.length).toBeGreaterThanOrEqual(300);
   });
 
   it('all items have exactly 4 choices', () => {
@@ -34,6 +34,14 @@ describe('Question bank', () => {
     expect(categories.has('estimation')).toBe(true);
   });
 
+  it('each category has at least 40 items', () => {
+    const categories = ['geography', 'history', 'science', 'logic', 'estimation'] as const;
+    for (const category of categories) {
+      const count = CALIBRATION_ITEMS.filter(it => it.category === category).length;
+      expect(count).toBeGreaterThanOrEqual(40);
+    }
+  });
+
   it('all items have valid difficulty level', () => {
     for (const item of CALIBRATION_ITEMS) {
       expect(['easy', 'medium', 'hard']).toContain(item.difficulty);
@@ -47,5 +55,11 @@ describe('Question bank', () => {
         expect(choice.length).toBeGreaterThan(0);
       }
     }
+  });
+
+  it('no duplicate questions', () => {
+    const questions = CALIBRATION_ITEMS.map(it => it.question);
+    const uniqueQuestions = new Set(questions);
+    expect(uniqueQuestions.size).toBe(questions.length);
   });
 });
