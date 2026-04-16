@@ -280,31 +280,33 @@ export const wmModule: TrainingModule = {
         }, 0) / Math.max(blockStats.length, 1);
 
         return {
-          blocks: blockStats.map((bs, i) => {
+          blocks: blockStats.map((bs, i): BlockStats => {
             const bp = blockPlans[i];
             if (bp?.type === 'ospan' && 'partialCredit' in bs) {
+              const custom: Record<string, number> = {
+                partialCredit: bs.partialCredit,
+                mathAccuracy: bs.mathAccuracy,
+                perfect: bs.perfect ? 1 : 0
+              };
               return {
                 blockIndex: i,
                 trialsCompleted: (bp.data as OSpanBlock).trials.length,
                 accuracy: bs.partialCredit,
-                custom: {
-                  partialCredit: bs.partialCredit,
-                  mathAccuracy: bs.mathAccuracy,
-                  perfect: bs.perfect ? 1 : 0
-                }
+                custom
               };
             } else if ('position' in bs) {
               const nbPlan = bp?.data as ReturnType<typeof generateNBackBlock>;
+              const custom: Record<string, number> = {
+                dpVisual: bs.position.dPrime,
+                dpAudio: bs.audio.dPrime,
+                posHits: bs.position.counts.hits,
+                audHits: bs.audio.counts.hits
+              };
               return {
                 blockIndex: i,
                 trialsCompleted: nbPlan?.trials.length ?? 0,
                 accuracy: bs.overallAccuracy,
-                custom: {
-                  dpVisual: bs.position.dPrime,
-                  dpAudio: bs.audio.dPrime,
-                  posHits: bs.position.counts.hits,
-                  audHits: bs.audio.counts.hits
-                }
+                custom
               };
             }
             return {
