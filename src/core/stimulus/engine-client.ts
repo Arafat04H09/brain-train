@@ -8,6 +8,14 @@ function ensureWorker(): Worker {
   if (!worker) {
     worker = new Worker(new URL('./engine-worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (ev) => {
+      if (ev.data?.kind === 'play-audio' && typeof ev.data.letter === 'string') {
+        try {
+          const utter = new SpeechSynthesisUtterance(ev.data.letter);
+          utter.rate = 1.2; utter.volume = 1;
+          speechSynthesis.speak(utter);
+        } catch (e) { /* ignore — not all browsers support synth */ }
+        return;
+      }
       const { id, ...rest } = ev.data;
       const resolver = pending.get(id);
       if (resolver) { pending.delete(id); resolver(rest); }

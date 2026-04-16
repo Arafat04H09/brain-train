@@ -1,21 +1,31 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import { useParams, useNavigate } from '@solidjs/router';
 import { getModule } from '~/core/modules/registry';
+import { dbQuery } from '~/core/storage/db-client';
 import { getDomainState, saveBlock, saveTrial, completeSession, upsertDomainState } from '~/core/storage/repos';
 import { runTrial } from '~/core/stimulus/engine-client';
-import type { Session } from '~/types/module';
+import { NBackGrid } from '~/ui/components/nback-grid';
+import type { Session, Trial, Response, ModuleId } from '~/types/module';
 
 export function SessionRunner() {
   const params = useParams();
   const nav = useNavigate();
   const [session, setSession] = createSignal<Session | null>(null);
   const [status, setStatus] = createSignal('initializing');
-  const [log, setLog] = createSignal<string[]>([]);
+  const [current, setCurrent] = createSignal<Trial | null>(null);
+  let canvasResolver: ((r: Response) => void) | null = null;
 
   onMount(async () => {
-    const m = getModule('placeholder')!;
-    const state = await getDomainState('placeholder') ?? {
-      moduleId: 'placeholder' as const, level: {}, ewmaPerformance: 0,
+    // read plan from DB to find the first module
+    const rows = await dbQuery<{ plan_json: string }>(
+      'SELECT plan_json FROM sessions WHERE id = ?', [params.sessionId!]
+    );
+    if (rows.length === 0) { setStatus('session not found'); return; }
+    const plan = JSON.parse(rows[0]!.plan_json);
+    const firstModuleId: ModuleId = plan.modules[0]?.moduleId ?? 'placeholder';
+    const m = getModule(firstModuleId) ?? getModule('placeholder')!;
+    const state = await getDomainState(m.id) ?? {
+      moduleId: m.id, level: {}, ewmaPerformance: 0,
       lastSessionTs: null, sessionsTotal: 0, plateauFlag: false, updatedTs: Date.now()
     };
     const s = m.createSession(state);
@@ -23,18 +33,25 @@ export function SessionRunner() {
     const blockId = crypto.randomUUID();
     await saveBlock({
       id: blockId, sessionId: params.sessionId!,
-      moduleId: 'placeholder', blockIndex: 0, kind: 'placeholder-block',
-      adaptiveParams: {}
+      moduleId: m.id, blockIndex: 0, kind: s.blocks[0]?.kind ?? 'block-0',
+      adaptiveParams: state.level
     });
     setStatus('running');
-    runSession(s, blockId);
+    runSessionLoop(s, blockId);
   });
 
-  async function runSession(s: Session, blockId: string) {
+  async function runSessionLoop(s: Session, blockId: string) {
     let trial = s.nextTrial();
     while (trial) {
-      setLog(l => [...l, `trial ${trial!.trialIndex}`]);
-      const resp = await runTrial(trial);
+      setCurrent(trial);
+      const resp = await new Promise<Response>((resolve) => {
+        if (trial!.stimulus.kind === 'nback-grid') {
+          canvasResolver = resolve;
+        } else {
+          runTrial(trial!).then(resolve);
+        }
+      });
+      canvasResolver = null;
       const result = await s.submit(resp);
       await saveTrial({
         id: trial.id, blockId, trialIndex: trial.trialIndex,
@@ -47,6 +64,7 @@ export function SessionRunner() {
       });
       trial = s.nextTrial();
     }
+    setCurrent(null);
     const result = s.complete();
     await completeSession(params.sessionId!);
     await upsertDomainState(result.nextDomainState);
@@ -54,12 +72,16 @@ export function SessionRunner() {
     nav(`/results/${params.sessionId}`);
   }
 
+  function onTrialDone(r: Response) {
+    if (canvasResolver) canvasResolver(r);
+  }
+
   return (
     <div class="container">
       <h1 class="hero">Session</h1>
       <p class="muted">Status: {status()}</p>
-      <Show when={session()}>
-        <ul>{log().map(l => <li>{l}</li>)}</ul>
+      <Show when={current() && current()!.stimulus.kind === 'nback-grid'}>
+        <NBackGrid trial={current()!} onDone={onTrialDone} />
       </Show>
     </div>
   );

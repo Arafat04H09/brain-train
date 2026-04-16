@@ -53,6 +53,29 @@ async function runTrial(trial: Trial): Promise<Response> {
       const text = String((trial.stimulus.payload as { text?: string }).text ?? '—');
       ctx.fillText(text, canvas.width / 2, canvas.height / 2);
     }
+    if (canvas && trial.stimulus.kind === 'nback-grid') {
+      const { position, letter } = trial.stimulus.payload as { position: number; letter: string };
+      const ctx = canvas.getContext('2d')!;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#14181e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // 3x3 grid (skip center = position 4); 8 positions map to cells 0,1,2,3,5,6,7,8
+      const cellW = canvas.width / 3;
+      const cellH = canvas.height / 3;
+      const cellMap = [0, 1, 2, 3, 5, 6, 7, 8];
+      const cellIdx = cellMap[position] ?? 0;
+      const cx = (cellIdx % 3) * cellW + cellW / 2;
+      const cy = Math.floor(cellIdx / 3) * cellH + cellH / 2;
+      ctx.fillStyle = '#7aa2ff';
+      ctx.fillRect(cx - cellW / 3, cy - cellH / 3, (2 * cellW) / 3, (2 * cellH) / 3);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '72px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(letter, cx, cy);
+      // request audio playback from main thread
+      (self as any).postMessage({ id: 0, kind: 'play-audio', letter });
+    }
     const tick = () => {
       if (!pending) return;
       pending.frames++;
