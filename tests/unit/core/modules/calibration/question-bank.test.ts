@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { CALIBRATION_ITEMS } from '~/core/modules/calibration/question-bank';
 
 describe('Question bank', () => {
-  it('has at least 300 items', () => {
-    expect(CALIBRATION_ITEMS.length).toBeGreaterThanOrEqual(300);
+  it('has at least 10,000 items', () => {
+    expect(CALIBRATION_ITEMS.length).toBeGreaterThanOrEqual(10000);
   });
 
   it('all items have exactly 4 choices', () => {
@@ -34,11 +34,11 @@ describe('Question bank', () => {
     expect(categories.has('estimation')).toBe(true);
   });
 
-  it('each category has at least 40 items', () => {
+  it('each category has at least 500 items', () => {
     const categories = ['geography', 'history', 'science', 'logic', 'estimation'] as const;
     for (const category of categories) {
       const count = CALIBRATION_ITEMS.filter(it => it.category === category).length;
-      expect(count).toBeGreaterThanOrEqual(40);
+      expect(count).toBeGreaterThanOrEqual(500);
     }
   });
 
