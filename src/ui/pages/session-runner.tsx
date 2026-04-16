@@ -41,27 +41,39 @@ export function SessionRunner() {
     };
     const s = m.createSession(state);
     setSession(s);
-    const blockId = crypto.randomUUID();
-    await saveBlock({
-      id: blockId, sessionId: params.sessionId!,
-      moduleId: m.id, blockIndex: 0, kind: s.blocks[0]?.kind ?? 'block-0',
-      adaptiveParams: state.level
-    });
+    // Pre-create all blocks for this session
+    const blockIds: string[] = [];
+    for (let i = 0; i < s.blocks.length; i++) {
+      const block = s.blocks[i];
+      if (!block) continue;
+      const id = crypto.randomUUID();
+      blockIds[i] = id;
+      await saveBlock({
+        id, sessionId: params.sessionId!,
+        moduleId: m.id, blockIndex: i, kind: block.kind,
+        adaptiveParams: state.level
+      });
+    }
     setStatus('running');
-    runSessionLoop(s, blockId);
+    runSessionLoop(s, blockIds);
   });
 
-  async function runSessionLoop(s: Session, blockId: string) {
+  async function runSessionLoop(s: Session, blockIds: string[]) {
     let trial = s.nextTrial();
     let lastBlockIndex = -1;
     while (trial) {
+      const blockId = blockIds[trial.blockIndex];
+      if (!blockId) {
+        console.error(`Missing block ID for block index ${trial.blockIndex}`);
+        break;
+      }
       if (trial.blockIndex !== lastBlockIndex) {
         lastBlockIndex = trial.blockIndex;
         const blockKind = s.blocks[trial.blockIndex]?.kind ?? 'block';
         const pred = await promptMetacog(blockKind);
         s.setMetacogPrediction(trial.blockIndex, pred);
         await saveMetacogPrediction({
-          blockId: `${blockId}-${trial.blockIndex}`,
+          blockId,
           predictedAccuracy: pred
         });
       }
