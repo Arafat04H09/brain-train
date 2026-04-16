@@ -10,7 +10,7 @@ import type { DomainState } from '~/types/domain';
 async function buildPlan() {
   await dbInit();
   const states: DomainState[] = [];
-  for (const m of listModules()) {
+  for (const m of listModules().filter(m => m.id !== 'placeholder')) {
     const s = await getDomainState(m.id) ?? {
       moduleId: m.id, level: {}, ewmaPerformance: 0,
       lastSessionTs: null, sessionsTotal: 0,

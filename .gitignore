@@ -7,4 +7,6 @@ research/tmp-jspsych/
 coverage/
 playwright-report/
 test-results/
+.playwright-mcp/
+screenshots/
 .DS_Store

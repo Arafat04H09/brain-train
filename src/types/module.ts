@@ -43,6 +43,7 @@ export interface Response {
   trialId: string;
   event: ResponseEvent;
   timing: TrialTimingResult;
+  allKeys?: string[];  // every keydown during the trial's response window
 }
 
 export interface TrialResult {

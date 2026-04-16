@@ -72,9 +72,12 @@ export const wmModule: TrainingModule = {
         const parts = resp.trialId.split('-');
         const bIdx = parseInt(parts[1]!);
         const tIdx = parseInt(parts[2]!);
-        const key = typeof resp.event.value === 'string' ? resp.event.value : '';
-        const isPos = POS_KEYS.has(key);
-        const isAud = AUD_KEYS.has(key);
+        // Dual match requires BOTH keys pressed in the same trial; check every key recorded.
+        const keys = resp.allKeys && resp.allKeys.length > 0
+          ? resp.allKeys
+          : (typeof resp.event.value === 'string' ? [resp.event.value] : []);
+        const isPos = keys.some(k => POS_KEYS.has(k));
+        const isAud = keys.some(k => AUD_KEYS.has(k));
         responses[bIdx] ??= {};
         responses[bIdx][tIdx] = { position: isPos, audio: isAud };
         const src = blockPlans[bIdx]!.trials[tIdx]!;

@@ -88,7 +88,7 @@ export function SessionRunner() {
       canvasResolver = null;
       const result = await s.submit(resp);
       await saveTrial({
-        id: trial.id, blockId, trialIndex: trial.trialIndex,
+        id: `${blockId}:${trial.id}`, blockId, trialIndex: trial.trialIndex,
         stimulus: trial.stimulus, response: resp,
         correct: result.correct, rtMs: result.rtMs ?? 0,
         requestedDurationMs: resp.timing.requestedDurationMs,
@@ -110,22 +110,52 @@ export function SessionRunner() {
     if (canvasResolver) canvasResolver(r);
   }
 
+  const activeCanvas = () => {
+    const t = current();
+    if (pendingPrompt() || !t) return null;
+    const k = t.stimulus.kind;
+    if (k === 'nback-grid' || k === 'ufov-peripheral' || k === 'flanker-compound') return t;
+    return null;
+  };
+
+  const blockProgress = () => {
+    const s = session();
+    const t = current();
+    if (!s || !t) return null;
+    const block = s.blocks[t.blockIndex];
+    return {
+      blockIdx: t.blockIndex + 1,
+      blockTotal: s.blocks.length,
+      trialIdx: t.trialIndex + 1,
+      trialTotal: block?.targetTrialCount ?? 0,
+      kind: block?.kind ?? ''
+    };
+  };
+
   return (
     <div class="container">
       <h1 class="hero">Session</h1>
-      <p class="muted">Status: {status()}</p>
+      <Show when={blockProgress()}>
+        {p => (
+          <p class="muted">
+            Block {p().blockIdx}/{p().blockTotal} · Trial {p().trialIdx}/{p().trialTotal} · {p().kind}
+          </p>
+        )}
+      </Show>
+      <Show when={!current()}>
+        <p class="muted">Status: {status()}</p>
+      </Show>
       <Show when={pendingPrompt()}>
         {p => <MetacogPrompt blockKind={p().blockKind}
           onSubmit={(pct) => { const cb = p().resolve; setPendingPrompt(null); cb(pct); }} />}
       </Show>
-      <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'nback-grid'}>
-        <NBackGrid trial={current()!} onDone={onTrialDone} />
-      </Show>
-      <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'ufov-peripheral'}>
-        <UfovStimulus trial={current()!} onDone={onTrialDone} />
-      </Show>
-      <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'flanker-compound'}>
-        <EfStimulus trial={current()!} onDone={onTrialDone} />
+      <Show when={activeCanvas()} keyed>
+        {trial => {
+          if (trial.stimulus.kind === 'nback-grid') return <NBackGrid trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'ufov-peripheral') return <UfovStimulus trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'flanker-compound') return <EfStimulus trial={trial} onDone={onTrialDone} />;
+          return null;
+        }}
       </Show>
     </div>
   );
