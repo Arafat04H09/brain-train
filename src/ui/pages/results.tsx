@@ -167,6 +167,13 @@ function TransferSection(props: { history: Record<string, TransferHistRow[]> }) 
           </For>
         </tbody>
       </table>
+      <p class="muted" style="font-size:.8rem;margin-top:.75rem">
+        Note: Matrix Reasoning uses procedurally-generated items with the same
+        rule engine as the Relational Reasoning training module. Improvement
+        here reflects near-transfer (within-generator). True far-transfer
+        measurement requires independent validated items (e.g., real ICAR
+        Sample Test) — not yet ingested.
+      </p>
     </div>
   );
 }

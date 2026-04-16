@@ -188,9 +188,10 @@ function drawStimulus(trial: Trial) {
       distractorCount: number; displayMs: number; maskMs: number;
     };
     const cx = w / 2, cy = h / 2;
-    ctx.fillStyle = p.centralTarget === 'car' ? '#7aa2ff' : '#ff8a4d';
-    const tw = p.centralTarget === 'car' ? 48 : 72, th = 28;
-    ctx.fillRect(cx - tw / 2, cy - th / 2, tw, th);
+    // Vehicle silhouettes (canonical UFOV uses real vehicle images). These are
+    // simple side-view paths — recognizable as car vs truck at sub-200ms flash
+    // without needing external image assets.
+    drawVehicle(ctx, cx, cy, p.centralTarget as 'car' | 'truck', 1);
     if (p.peripheralLocation >= 0) {
       const angle = (p.peripheralLocation / 8) * Math.PI * 2;
       const r = Math.min(w, h) * 0.35;
@@ -386,4 +387,69 @@ function drawStimulus(trial: Trial) {
     ctx.textBaseline = 'bottom';
     ctx.fillText('Press SPACE as fast as possible', w / 2, cy - 60);
   }
+}
+
+// Side-view vehicle silhouette for UFOV central targets.
+// Canonical UFOV uses photographs of a car vs a truck; these hand-drawn paths
+// are a CC0 approximation recognizable under sub-200ms presentation.
+function drawVehicle(
+  ctx: OffscreenCanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  kind: 'car' | 'truck',
+  scale = 1
+) {
+  const s = scale;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(s, s);
+  ctx.fillStyle = kind === 'car' ? '#7aa2ff' : '#ff8a4d';
+
+  if (kind === 'car') {
+    // Sedan silhouette: body with raked roofline
+    ctx.beginPath();
+    ctx.moveTo(-40, 6);
+    ctx.lineTo(-40, -2);
+    ctx.quadraticCurveTo(-38, -6, -32, -8);
+    ctx.lineTo(-20, -8);
+    ctx.quadraticCurveTo(-12, -20, 4, -20);
+    ctx.quadraticCurveTo(20, -20, 26, -8);
+    ctx.lineTo(36, -8);
+    ctx.quadraticCurveTo(40, -6, 40, -2);
+    ctx.lineTo(40, 6);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // Flatbed / box truck: cab on left, tall cargo box on right
+    ctx.beginPath();
+    // cab
+    ctx.moveTo(-44, 6);
+    ctx.lineTo(-44, -4);
+    ctx.quadraticCurveTo(-42, -16, -30, -16);
+    ctx.lineTo(-18, -16);
+    ctx.lineTo(-18, -4);
+    ctx.lineTo(-14, -4);
+    // cargo box
+    ctx.lineTo(-14, -22);
+    ctx.lineTo(42, -22);
+    ctx.lineTo(42, 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Wheels (both have 2 wheels visible in side view)
+  ctx.fillStyle = '#0a0c0f';
+  for (const wx of kind === 'car' ? [-22, 24] : [-30, 28]) {
+    ctx.beginPath();
+    ctx.arc(wx, 8, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Lighter wheel centers
+  ctx.fillStyle = '#555';
+  for (const wx of kind === 'car' ? [-22, 24] : [-30, 28]) {
+    ctx.beginPath();
+    ctx.arc(wx, 8, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
