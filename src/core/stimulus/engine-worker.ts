@@ -76,6 +76,57 @@ async function runTrial(trial: Trial): Promise<Response> {
       // request audio playback from main thread
       (self as any).postMessage({ id: 0, kind: 'play-audio', letter });
     }
+    if (canvas && trial.stimulus.kind === 'ufov-peripheral') {
+      const p = trial.stimulus.payload as {
+        subtestId: string; centralTarget: string; peripheralLocation: number;
+        distractorCount: number; displayMs: number; maskMs: number;
+      };
+      const ctx = canvas.getContext('2d')!;
+      const w = canvas.width, h = canvas.height;
+      const cx = w / 2, cy = h / 2;
+
+      // Stimulus frame
+      ctx.fillStyle = '#14181e'; ctx.fillRect(0, 0, w, h);
+      // Central target (car=blue rect, truck=orange wider rect)
+      ctx.fillStyle = p.centralTarget === 'car' ? '#7aa2ff' : '#ff8a4d';
+      const tw = p.centralTarget === 'car' ? 48 : 72, th = 28;
+      ctx.fillRect(cx - tw / 2, cy - th / 2, tw, th);
+      // Peripheral target (white square on radial ring)
+      if (p.peripheralLocation >= 0) {
+        const angle = (p.peripheralLocation / 8) * Math.PI * 2;
+        const r = Math.min(w, h) * 0.35;
+        const px = cx + Math.cos(angle) * r;
+        const py = cy + Math.sin(angle) * r;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(px - 12, py - 12, 24, 24);
+      }
+      // Distractors (grey triangles) arranged on intermediate radius
+      for (let i = 0; i < p.distractorCount; i++) {
+        const ang = (i / p.distractorCount) * Math.PI * 2 + 0.3;
+        const rr = Math.min(w, h) * 0.25;
+        const dx = cx + Math.cos(ang) * rr, dy = cy + Math.sin(ang) * rr;
+        ctx.fillStyle = '#888';
+        ctx.beginPath();
+        ctx.moveTo(dx, dy - 10); ctx.lineTo(dx - 9, dy + 6); ctx.lineTo(dx + 9, dy + 6);
+        ctx.closePath(); ctx.fill();
+      }
+
+      // Schedule mandatory random-dot mask after stimulus duration
+      setTimeout(() => {
+        if (!canvas) return;
+        const ctx2 = canvas.getContext('2d')!;
+        ctx2.fillStyle = '#14181e'; ctx2.fillRect(0, 0, w, h);
+        for (let i = 0; i < 600; i++) {
+          ctx2.fillStyle = Math.random() < 0.5 ? '#666' : '#ccc';
+          const dx = Math.random() * w, dy = Math.random() * h;
+          ctx2.fillRect(dx, dy, 3, 3);
+        }
+        setTimeout(() => {
+          if (!canvas) return;
+          ctx2.fillStyle = '#14181e'; ctx2.fillRect(0, 0, w, h);
+        }, p.maskMs);
+      }, p.displayMs);
+    }
     const tick = () => {
       if (!pending) return;
       pending.frames++;

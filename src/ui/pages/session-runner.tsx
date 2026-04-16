@@ -5,6 +5,7 @@ import { dbQuery } from '~/core/storage/db-client';
 import { getDomainState, saveBlock, saveTrial, completeSession, upsertDomainState, saveMetacogPrediction } from '~/core/storage/repos';
 import { runTrial } from '~/core/stimulus/engine-client';
 import { NBackGrid } from '~/ui/components/nback-grid';
+import { UfovStimulus } from '~/ui/components/ufov-stimulus';
 import { MetacogPrompt } from '~/ui/components/metacog-prompt';
 import type { Session, Trial, Response, ModuleId } from '~/types/module';
 
@@ -65,7 +66,7 @@ export function SessionRunner() {
       }
       setCurrent(trial);
       const resp = await new Promise<Response>((resolve) => {
-        if (trial!.stimulus.kind === 'nback-grid') {
+        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral') {
           canvasResolver = resolve;
         } else {
           runTrial(trial!).then(resolve);
@@ -106,6 +107,9 @@ export function SessionRunner() {
       </Show>
       <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'nback-grid'}>
         <NBackGrid trial={current()!} onDone={onTrialDone} />
+      </Show>
+      <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'ufov-peripheral'}>
+        <UfovStimulus trial={current()!} onDone={onTrialDone} />
       </Show>
     </div>
   );
