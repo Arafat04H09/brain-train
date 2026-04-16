@@ -2,9 +2,10 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { useParams, useNavigate } from '@solidjs/router';
 import { getModule } from '~/core/modules/registry';
 import { dbQuery } from '~/core/storage/db-client';
-import { getDomainState, saveBlock, saveTrial, completeSession, upsertDomainState } from '~/core/storage/repos';
+import { getDomainState, saveBlock, saveTrial, completeSession, upsertDomainState, saveMetacogPrediction } from '~/core/storage/repos';
 import { runTrial } from '~/core/stimulus/engine-client';
 import { NBackGrid } from '~/ui/components/nback-grid';
+import { MetacogPrompt } from '~/ui/components/metacog-prompt';
 import type { Session, Trial, Response, ModuleId } from '~/types/module';
 
 export function SessionRunner() {
@@ -13,7 +14,15 @@ export function SessionRunner() {
   const [session, setSession] = createSignal<Session | null>(null);
   const [status, setStatus] = createSignal('initializing');
   const [current, setCurrent] = createSignal<Trial | null>(null);
+  const [pendingPrompt, setPendingPrompt] = createSignal<{ blockKind: string;
+    resolve: (pct: number) => void } | null>(null);
   let canvasResolver: ((r: Response) => void) | null = null;
+
+  function promptMetacog(blockKind: string): Promise<number> {
+    return new Promise((resolve) => {
+      setPendingPrompt({ blockKind, resolve });
+    });
+  }
 
   onMount(async () => {
     // read plan from DB to find the first module
@@ -42,7 +51,18 @@ export function SessionRunner() {
 
   async function runSessionLoop(s: Session, blockId: string) {
     let trial = s.nextTrial();
+    let lastBlockIndex = -1;
     while (trial) {
+      if (trial.blockIndex !== lastBlockIndex) {
+        lastBlockIndex = trial.blockIndex;
+        const blockKind = s.blocks[trial.blockIndex]?.kind ?? 'block';
+        const pred = await promptMetacog(blockKind);
+        s.setMetacogPrediction(trial.blockIndex, pred);
+        await saveMetacogPrediction({
+          blockId: `${blockId}-${trial.blockIndex}`,
+          predictedAccuracy: pred
+        });
+      }
       setCurrent(trial);
       const resp = await new Promise<Response>((resolve) => {
         if (trial!.stimulus.kind === 'nback-grid') {
@@ -80,7 +100,11 @@ export function SessionRunner() {
     <div class="container">
       <h1 class="hero">Session</h1>
       <p class="muted">Status: {status()}</p>
-      <Show when={current() && current()!.stimulus.kind === 'nback-grid'}>
+      <Show when={pendingPrompt()}>
+        {p => <MetacogPrompt blockKind={p().blockKind}
+          onSubmit={(pct) => { const cb = p().resolve; setPendingPrompt(null); cb(pct); }} />}
+      </Show>
+      <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'nback-grid'}>
         <NBackGrid trial={current()!} onDone={onTrialDone} />
       </Show>
     </div>

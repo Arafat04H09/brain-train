@@ -75,3 +75,14 @@ export async function upsertDomainState(s: DomainState): Promise<void> {
      s.lastSessionTs, s.sessionsTotal, s.plateauFlag ? 1 : 0, s.updatedTs]
   );
 }
+
+export async function saveMetacogPrediction(row: {
+  blockId: string; predictedAccuracy: number;
+  actualAccuracy?: number | null; brierContribution?: number | null;
+}): Promise<void> {
+  await dbExec(
+    `INSERT OR REPLACE INTO metacog_predictions(block_id, predicted_accuracy, actual_accuracy, brier_contribution)
+     VALUES(?, ?, ?, ?)`,
+    [row.blockId, row.predictedAccuracy, row.actualAccuracy ?? null, row.brierContribution ?? null]
+  );
+}
