@@ -43,48 +43,73 @@ function clearCanvas() {
 
 async function runTrial(trial: Trial): Promise<Response> {
   return new Promise<Response>((resolve) => {
-    const startTs = performance.now();
-    pending = { trial, startTs, frames: 0, stimClearedAt: null, keys: [], resolve };
     const spec = trial.timingSpec;
+    const preMs = spec.preMs ?? 0;
     const stimulusMs = spec.stimulusMs === 'until-response' ? Infinity : spec.stimulusMs;
     const isiMs = spec.isiMs ?? 0;
     const totalMs = stimulusMs === Infinity ? Infinity : stimulusMs + isiMs;
 
-    // Draw initial stimulus
-    drawStimulus(trial);
+    // Pre-stimulus phase: fixation cross so the user knows where to look and
+    // when the stimulus is coming. Keys pressed during this window are ignored
+    // because `pending` is still null.
+    if (preMs > 0) drawFixation();
 
-    const tick = () => {
-      if (!pending) return;
-      pending.frames++;
-      const elapsed = performance.now() - pending.startTs;
-      // Clear stimulus when stimulus phase ends (before ISI)
-      if (pending.stimClearedAt === null && elapsed >= stimulusMs && stimulusMs !== Infinity) {
-        clearCanvas();
-        pending.stimClearedAt = elapsed;
-      }
-      // "until-response" kind: resolve on first key press
-      if (stimulusMs === Infinity && pending.keys.length > 0) {
-        finishTrial(resolve, 'ok');
-        return;
-      }
-      // Timed trial: resolve at end of stimulus + ISI window
-      if (elapsed >= totalMs) {
-        finishTrial(resolve, 'ok');
-        return;
-      }
+    const startStimulus = () => {
+      const startTs = performance.now();
+      pending = { trial, startTs, frames: 0, stimClearedAt: null, keys: [], resolve };
+      drawStimulus(trial);
+
+      const tick = () => {
+        if (!pending) return;
+        pending.frames++;
+        const elapsed = performance.now() - pending.startTs;
+        // Clear stimulus when stimulus phase ends (before ISI)
+        if (pending.stimClearedAt === null && elapsed >= stimulusMs && stimulusMs !== Infinity) {
+          clearCanvas();
+          pending.stimClearedAt = elapsed;
+        }
+        // "until-response" kind: resolve on first key press
+        if (stimulusMs === Infinity && pending.keys.length > 0) {
+          finishTrial(resolve, 'ok');
+          return;
+        }
+        // Timed trial: resolve at end of stimulus + ISI window
+        if (elapsed >= totalMs) {
+          finishTrial(resolve, 'ok');
+          return;
+        }
+        if (typeof requestAnimationFrame !== 'undefined') {
+          requestAnimationFrame(tick);
+        } else {
+          setTimeout(tick, 16);
+        }
+      };
       if (typeof requestAnimationFrame !== 'undefined') {
         requestAnimationFrame(tick);
       } else {
-        // Fallback for environments where rAF isn't available in the worker
         setTimeout(tick, 16);
       }
     };
-    if (typeof requestAnimationFrame !== 'undefined') {
-      requestAnimationFrame(tick);
-    } else {
-      setTimeout(tick, 16);
-    }
+
+    if (preMs > 0) setTimeout(startStimulus, preMs);
+    else startStimulus();
   });
+}
+
+function drawFixation() {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#14181e';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = '#7c8088';
+  ctx.lineWidth = 2;
+  const cx = w / 2, cy = h / 2;
+  const s = 14;
+  ctx.beginPath();
+  ctx.moveTo(cx - s, cy); ctx.lineTo(cx + s, cy);
+  ctx.moveTo(cx, cy - s); ctx.lineTo(cx, cy + s);
+  ctx.stroke();
 }
 
 function finishTrial(resolve: (r: Response) => void, flag: 'ok' | 'dropped-frames' | 'over-duration') {

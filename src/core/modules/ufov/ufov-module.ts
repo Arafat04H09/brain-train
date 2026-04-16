@@ -57,7 +57,7 @@ export const ufovModule: TrainingModule = {
           trialIndex: trialIdx,
           stimulus: stim,
           inputSpec: { accept: ['keyboard'], keys: ['ArrowLeft','ArrowRight','c','t'], timeoutMs: 2000 },
-          timingSpec: { stimulusMs: displayMs, maskMs: (stim.payload as any).maskMs, isiMs: 500 }
+          timingSpec: { preMs: 500, stimulusMs: displayMs, maskMs: (stim.payload as any).maskMs, isiMs: 500 }
         };
         trials[id] = { subtest: st, displayMs, correctAnswer };
         trialIdx++;

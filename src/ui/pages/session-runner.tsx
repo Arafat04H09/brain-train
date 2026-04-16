@@ -18,6 +18,7 @@ export function SessionRunner() {
   const [current, setCurrent] = createSignal<Trial | null>(null);
   const [pendingPrompt, setPendingPrompt] = createSignal<{ blockKind: string;
     resolve: (pct: number) => void } | null>(null);
+  const [aborted, setAborted] = createSignal(false);
   let canvasResolver: ((r: Response) => void) | null = null;
 
   function promptMetacog(blockKind: string): Promise<number> {
@@ -61,7 +62,7 @@ export function SessionRunner() {
   async function runSessionLoop(s: Session, blockIds: string[]) {
     let trial = s.nextTrial();
     let lastBlockIndex = -1;
-    while (trial) {
+    while (trial && !aborted()) {
       const blockId = blockIds[trial.blockIndex];
       if (!blockId) {
         console.error(`Missing block ID for block index ${trial.blockIndex}`);
@@ -99,6 +100,12 @@ export function SessionRunner() {
       trial = s.nextTrial();
     }
     setCurrent(null);
+    if (aborted()) {
+      await completeSession(params.sessionId!);
+      setStatus('aborted');
+      nav('/');
+      return;
+    }
     const result = s.complete();
     await completeSession(params.sessionId!);
     await upsertDomainState(result.nextDomainState);
@@ -144,6 +151,13 @@ export function SessionRunner() {
       </Show>
       <Show when={!current()}>
         <p class="muted">Status: {status()}</p>
+      </Show>
+      <Show when={status() === 'running'}>
+        <p style="text-align:right;margin-top:-1.4rem;margin-bottom:1rem">
+          <button style="font-size:.85rem;padding:.3rem .7rem" onClick={() => setAborted(true)}>
+            End session
+          </button>
+        </p>
       </Show>
       <Show when={pendingPrompt()}>
         {p => <MetacogPrompt blockKind={p().blockKind}
