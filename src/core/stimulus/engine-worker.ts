@@ -127,6 +127,42 @@ async function runTrial(trial: Trial): Promise<Response> {
         }, p.maskMs);
       }, p.displayMs);
     }
+    if (canvas && trial.stimulus.kind === 'flanker-compound') {
+      const p = trial.stimulus.payload as any;
+      const ctx = canvas.getContext('2d')!;
+      const w = canvas.width, h = canvas.height;
+      ctx.fillStyle = '#14181e'; ctx.fillRect(0, 0, w, h);
+      // Rule cue
+      ctx.fillStyle = '#e6e6e6'; ctx.font = '24px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(`Sort by: ${p.rule}`, w / 2, 40);
+      // Draw shape helper
+      const colors: Record<string, string> = { red: '#ff4d4d', blue: '#4d4dff', green: '#4dff4d', yellow: '#ffff4d' };
+      const draw = (cx: number, cy: number, color: string, shape: string, scale = 1) => {
+        ctx.fillStyle = colors[color] ?? '#fff';
+        const size = 40 * scale;
+        if (shape === 'circle') { ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, Math.PI * 2); ctx.fill(); }
+        else if (shape === 'square') { ctx.fillRect(cx - size / 2, cy - size / 2, size, size); }
+        else if (shape === 'triangle') { ctx.beginPath(); ctx.moveTo(cx, cy - size / 2); ctx.lineTo(cx - size / 2, cy + size / 2); ctx.lineTo(cx + size / 2, cy + size / 2); ctx.closePath(); ctx.fill(); }
+        else { ctx.beginPath(); ctx.moveTo(cx, cy - size / 2); ctx.lineTo(cx + size / 2, cy); ctx.lineTo(cx, cy + size / 2); ctx.lineTo(cx - size / 2, cy); ctx.closePath(); ctx.fill(); }
+      };
+      const cx = w / 2, cy = h / 2;
+      const flankerColor = p.flankerCongruent ? p.color : (p.color === 'red' ? 'blue' : 'red');
+      const flankerShape = p.flankerCongruent ? p.shape : (p.shape === 'circle' ? 'square' : 'circle');
+      const scale = p.size === 'large' ? 1.3 : 1;
+      draw(cx - 100, cy, flankerColor, flankerShape, scale);
+      draw(cx, cy, p.color, p.shape, scale);
+      draw(cx + 100, cy, flankerColor, flankerShape, scale);
+
+      // Stop signal (red border after SSD ms)
+      if (p.hasStopSignal) {
+        setTimeout(() => {
+          if (!canvas) return;
+          const ctx2 = canvas.getContext('2d')!;
+          ctx2.strokeStyle = '#ff4d4d'; ctx2.lineWidth = 8;
+          ctx2.strokeRect(4, 4, w - 8, h - 8);
+        }, p.ssdMs);
+      }
+    }
     const tick = () => {
       if (!pending) return;
       pending.frames++;

@@ -6,6 +6,7 @@ import { getDomainState, saveBlock, saveTrial, completeSession, upsertDomainStat
 import { runTrial } from '~/core/stimulus/engine-client';
 import { NBackGrid } from '~/ui/components/nback-grid';
 import { UfovStimulus } from '~/ui/components/ufov-stimulus';
+import { EfStimulus } from '~/ui/components/ef-stimulus';
 import { MetacogPrompt } from '~/ui/components/metacog-prompt';
 import type { Session, Trial, Response, ModuleId } from '~/types/module';
 
@@ -66,7 +67,7 @@ export function SessionRunner() {
       }
       setCurrent(trial);
       const resp = await new Promise<Response>((resolve) => {
-        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral') {
+        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral' || trial!.stimulus.kind === 'flanker-compound') {
           canvasResolver = resolve;
         } else {
           runTrial(trial!).then(resolve);
@@ -110,6 +111,9 @@ export function SessionRunner() {
       </Show>
       <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'ufov-peripheral'}>
         <UfovStimulus trial={current()!} onDone={onTrialDone} />
+      </Show>
+      <Show when={!pendingPrompt() && current() && current()!.stimulus.kind === 'flanker-compound'}>
+        <EfStimulus trial={current()!} onDone={onTrialDone} />
       </Show>
     </div>
   );
