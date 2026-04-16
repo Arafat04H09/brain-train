@@ -252,4 +252,121 @@ function drawStimulus(trial: Trial) {
       }, p.ssdMs);
     }
   }
+
+  if (trial.stimulus.kind === 'matrix-3x3') {
+    const p = trial.stimulus.payload as {
+      grid: Array<{ shape: string; color: string; size: string; count: number }>;
+      choices: Array<{ shape: string; color: string; size: string; count: number }>;
+      correctIdx: number;
+      ruleCount: number;
+    };
+
+    const colors: Record<string, string> = {
+      red: '#ff4d4d', blue: '#4d4dff', green: '#4dff4d', yellow: '#ffff4d'
+    };
+
+    const drawPanel = (cx: number, cy: number, panel: any) => {
+      const sizeMap: Record<string, number> = { small: 20, medium: 30, large: 40 };
+      const size = sizeMap[panel.size] ?? 30;
+      const count = panel.count ?? 1;
+
+      // Draw count copies in a small grid within the cell
+      const spacing = size + 8;
+      const startX = cx - (spacing * (count - 1)) / 2;
+      const startY = cy;
+
+      for (let i = 0; i < count; i++) {
+        const x = startX + i * spacing;
+        const y = startY;
+        ctx.fillStyle = colors[panel.color] ?? '#fff';
+
+        if (panel.shape === 'circle') {
+          ctx.beginPath();
+          ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (panel.shape === 'square') {
+          ctx.fillRect(x - size / 2, y - size / 2, size, size);
+        } else if (panel.shape === 'triangle') {
+          ctx.beginPath();
+          ctx.moveTo(x, y - size / 2);
+          ctx.lineTo(x - size / 2, y + size / 2);
+          ctx.lineTo(x + size / 2, y + size / 2);
+          ctx.closePath();
+          ctx.fill();
+        } else if (panel.shape === 'diamond') {
+          ctx.beginPath();
+          ctx.moveTo(x, y - size / 2);
+          ctx.lineTo(x + size / 2, y);
+          ctx.lineTo(x, y + size / 2);
+          ctx.lineTo(x - size / 2, y);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    };
+
+    // Draw 3x3 grid (top portion of canvas)
+    const cellSize = 120;
+    const gridStartX = (w - cellSize * 3) / 2;
+    const gridStartY = 40;
+
+    ctx.strokeStyle = '#2a2f38';
+    ctx.lineWidth = 2;
+
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const x = gridStartX + col * cellSize;
+        const y = gridStartY + row * cellSize;
+
+        ctx.strokeRect(x, y, cellSize, cellSize);
+
+        if (row === 2 && col === 2) {
+          // Draw "?" for the answer cell
+          ctx.fillStyle = '#7c8088';
+          ctx.font = '48px system-ui';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('?', x + cellSize / 2, y + cellSize / 2);
+        } else {
+          const idx = row * 3 + col;
+          const panel = p.grid[idx];
+          if (panel) {
+            drawPanel(x + cellSize / 2, y + cellSize / 2, panel);
+          }
+        }
+      }
+    }
+
+    // Draw answer choices (8 options in 2x4 grid at bottom)
+    const choiceGridStartY = gridStartY + cellSize * 3 + 30;
+    const choiceCellSize = 80;
+    const choiceGridWidth = choiceCellSize * 4;
+    const choiceGridStartX = (w - choiceGridWidth) / 2;
+
+    ctx.fillStyle = '#e6e6e6';
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Press 1–8 to select:', w / 2, choiceGridStartY - 20);
+
+    for (let i = 0; i < 8; i++) {
+      const row = Math.floor(i / 4);
+      const col = i % 4;
+      const x = choiceGridStartX + col * choiceCellSize;
+      const y = choiceGridStartY + row * choiceCellSize;
+
+      ctx.strokeStyle = p.choices[i] && i === p.correctIdx ? '#7aa2ff' : '#2a2f38';
+      ctx.lineWidth = p.choices[i] && i === p.correctIdx ? 3 : 2;
+      ctx.strokeRect(x, y, choiceCellSize, choiceCellSize);
+
+      if (p.choices[i]) {
+        drawPanel(x + choiceCellSize / 2, y + choiceCellSize / 2 - 10, p.choices[i]);
+      }
+
+      // Draw choice number
+      ctx.fillStyle = '#e6e6e6';
+      ctx.font = '12px system-ui';
+      ctx.fillText(String(i + 1), x + choiceCellSize / 2, y + choiceCellSize - 10);
+    }
+  }
 }

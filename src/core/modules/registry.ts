@@ -3,12 +3,14 @@ import { placeholderModule } from './placeholder/placeholder-module';
 import { wmModule } from './working-memory/wm-module';
 import { ufovModule } from './ufov/ufov-module';
 import { efModule } from './compound-ef/ef-module';
+import { relationalModule } from './relational/relational-module';
 
 const registry = new Map<ModuleId, TrainingModule>();
 registry.set(placeholderModule.id, placeholderModule);
 registry.set(wmModule.id, wmModule);
 registry.set(ufovModule.id, ufovModule);
 registry.set(efModule.id, efModule);
+registry.set(relationalModule.id, relationalModule);
 
 export function registerModule(m: TrainingModule) { registry.set(m.id, m); }
 export function getModule(id: ModuleId): TrainingModule | undefined { return registry.get(id); }
