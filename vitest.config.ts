@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import solid from 'vite-plugin-solid';
+import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   plugins: [solid()],
@@ -8,5 +9,8 @@ export default defineConfig({
     globals: true,
     setupFiles: []
   },
-  resolve: { conditions: ['development', 'browser'] }
+  resolve: {
+    alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) },
+    conditions: ['development', 'browser']
+  }
 });
