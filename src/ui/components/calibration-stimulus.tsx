@@ -16,7 +16,9 @@ export function CalibrationStimulus(props: {
 
   const [step, setStep] = createSignal<'answer' | 'confidence' | 'feedback'>('answer');
   const [choice, setChoice] = createSignal<number | null>(null);
-  const [confidence, setConfidence] = createSignal(75);
+  // 4-choice MCQ: chance rate is 25%. Range is 25-99%. Default anchors at 50
+  // (mid-range) so neither "sure" nor "random guess" is the default.
+  const [confidence, setConfidence] = createSignal(50);
   const [feedbackMessage, setFeedbackMessage] = createSignal('');
   const [responseStartTime] = createSignal(Date.now());
 
@@ -28,7 +30,7 @@ export function CalibrationStimulus(props: {
       e.preventDefault();
     } else if (step() === 'confidence') {
       if (e.key === 'ArrowLeft') {
-        setConfidence(Math.max(50, confidence() - 1));
+        setConfidence(Math.max(25, confidence() - 1));
         e.preventDefault();
       } else if (e.key === 'ArrowRight') {
         setConfidence(Math.min(99, confidence() + 1));
@@ -123,13 +125,16 @@ export function CalibrationStimulus(props: {
           <div style="margin:2rem 0">
             <input
               type="range"
-              min="50"
+              min="25"
               max="99"
               value={confidence()}
               onInput={handleSliderChange}
               style="width:80%;max-width:400px"
             />
             <div style="font-size:2rem;margin-top:0.5rem">{confidence()}%</div>
+            <p class="muted" style="font-size:.8rem;margin-top:.2rem">
+              25% = pure guess (chance rate for 4 options)
+            </p>
           </div>
           <button onClick={handleSubmit} style="padding:0.8rem 1.5rem;font-size:1rem;cursor:pointer">
             Submit
