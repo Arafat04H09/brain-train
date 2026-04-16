@@ -208,15 +208,17 @@ function drawStimulus(trial: Trial) {
       ctx.moveTo(dx, dy - 10); ctx.lineTo(dx - 9, dy + 6); ctx.lineTo(dx + 9, dy + 6);
       ctx.closePath(); ctx.fill();
     }
-    // Random-dot mask after stimulus duration (UFOV-specific)
+    // Random-dot mask after stimulus duration (UFOV-specific).
+    // Sparser than before — dense masks turn into visual chaos and don't help
+    // disrupt iconic memory more than a moderate-density mask already does.
     setTimeout(() => {
       if (!canvas) return;
       const ctx2 = canvas.getContext('2d')!;
       ctx2.fillStyle = '#14181e'; ctx2.fillRect(0, 0, w, h);
-      for (let i = 0; i < 600; i++) {
-        ctx2.fillStyle = Math.random() < 0.5 ? '#666' : '#ccc';
+      for (let i = 0; i < 180; i++) {
+        ctx2.fillStyle = Math.random() < 0.5 ? '#555' : '#aaa';
         const dx = Math.random() * w, dy = Math.random() * h;
-        ctx2.fillRect(dx, dy, 3, 3);
+        ctx2.fillRect(dx, dy, 4, 4);
       }
     }, p.displayMs);
   }

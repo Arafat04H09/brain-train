@@ -129,8 +129,24 @@ export function SessionRunner() {
 
   const blockProgress = () => {
     const s = session();
+    if (!s) return null;
+    // While the metacog prompt is up we're between blocks — show the upcoming
+    // block instead of the stale last trial of the previous block.
+    const prompt = pendingPrompt();
+    if (prompt) {
+      const upcoming = s.blocks.find(b => b.kind === prompt.blockKind);
+      if (upcoming) {
+        return {
+          blockIdx: upcoming.index + 1,
+          blockTotal: s.blocks.length,
+          trialIdx: 0,
+          trialTotal: upcoming.targetTrialCount,
+          kind: upcoming.kind
+        };
+      }
+    }
     const t = current();
-    if (!s || !t) return null;
+    if (!t) return null;
     const block = s.blocks[t.blockIndex];
     return {
       blockIdx: t.blockIndex + 1,
