@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, For, Show, onMount, onCleanup } from 'solid-js';
 import type { Trial, Response } from '~/types/module';
 
 interface CalibrationPayload {
@@ -39,6 +39,9 @@ export function CalibrationStimulus(props: {
       }
     }
   }
+
+  onMount(() => window.addEventListener('keydown', handleKeyDown));
+  onCleanup(() => window.removeEventListener('keydown', handleKeyDown));
 
   function handleChoiceClick(idx: number) {
     if (step() === 'answer') {
@@ -87,7 +90,7 @@ export function CalibrationStimulus(props: {
   }
 
   return (
-    <div class="container" style="text-align:center" onKeyDown={handleKeyDown}>
+    <div class="container" style="text-align:center">
       <Show when={step() === 'answer'}>
         <div>
           <h2 class="hero">{payload.question}</h2>
@@ -99,15 +102,7 @@ export function CalibrationStimulus(props: {
                 return (
                   <button
                     onClick={() => handleChoiceClick(choiceIdx)}
-                    style={{
-                      'padding': '1rem 1.5rem',
-                      'font-size': '1rem',
-                      'cursor': 'pointer',
-                      'border': '2px solid #ccc',
-                      'border-radius': '4px',
-                      'background': '#f9f9f9',
-                      'min-width': '180px'
-                    }}
+                    style="padding:1rem 1.5rem;font-size:1rem;min-width:180px;text-align:left"
                   >
                     <strong>{label}.</strong> {choice_text}
                   </button>

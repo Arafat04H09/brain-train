@@ -257,7 +257,6 @@ function drawStimulus(trial: Trial) {
     const p = trial.stimulus.payload as {
       grid: Array<{ shape: string; color: string; size: string; count: number }>;
       choices: Array<{ shape: string; color: string; size: string; count: number }>;
-      correctIdx: number;
       ruleCount: number;
     };
 
@@ -355,8 +354,8 @@ function drawStimulus(trial: Trial) {
       const x = choiceGridStartX + col * choiceCellSize;
       const y = choiceGridStartY + row * choiceCellSize;
 
-      ctx.strokeStyle = p.choices[i] && i === p.correctIdx ? '#7aa2ff' : '#2a2f38';
-      ctx.lineWidth = p.choices[i] && i === p.correctIdx ? 3 : 2;
+      ctx.strokeStyle = '#2a2f38';
+      ctx.lineWidth = 2;
       ctx.strokeRect(x, y, choiceCellSize, choiceCellSize);
 
       if (p.choices[i]) {

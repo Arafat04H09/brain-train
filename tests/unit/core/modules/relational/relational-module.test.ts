@@ -31,7 +31,7 @@ describe('Relational module', () => {
     expect(t?.stimulus.kind).toBe('matrix-3x3');
   });
 
-  it('stimulus payload has grid, choices, correctIdx', () => {
+  it('stimulus payload has grid + choices, and correctIdx lives in metadata (not leaked to UI)', () => {
     const s = relationalModule.createSession({
       moduleId: 'relational',
       level: {},
@@ -47,7 +47,8 @@ describe('Relational module', () => {
     expect(payload.grid).toHaveLength(9);
     expect(payload.choices).toBeDefined();
     expect(payload.choices).toHaveLength(8);
-    expect(typeof payload.correctIdx).toBe('number');
+    expect(payload.correctIdx).toBeUndefined();
+    expect(typeof (t?.metadata as any)?.correctIdx).toBe('number');
   });
 
   it('accepts keyboard input 1-8', () => {
@@ -94,8 +95,7 @@ describe('Relational module', () => {
     let t = s.nextTrial();
     let count = 0;
     while (t && count < 12) {
-      const payload = t.stimulus.payload as any;
-      const correctIdx = payload.correctIdx;
+      const correctIdx = (t.metadata as any).correctIdx as number;
       await s.submit({
         trialId: t.id,
         event: { kind: 'keydown', value: String(correctIdx + 1), rtMs: 800 },
@@ -125,8 +125,8 @@ describe('Relational module', () => {
     let count = 0;
     while (t && count < 12) {
       // Always pick wrong answer (correctIdx + 1 wraps, or pick 1 if correct is 8)
-      const payload = t.stimulus.payload as any;
-      const wrongIdx = (payload.correctIdx + 1) % 8;
+      const correctIdx = (t.metadata as any).correctIdx as number;
+      const wrongIdx = (correctIdx + 1) % 8;
       await s.submit({
         trialId: t.id,
         event: { kind: 'keydown', value: String(wrongIdx + 1), rtMs: 800 },
@@ -155,10 +155,10 @@ describe('Relational module', () => {
     let t = s.nextTrial();
     let count = 0;
     while (t && count < 12) {
-      const payload = t.stimulus.payload as any;
+      const correctIdx = (t.metadata as any).correctIdx as number;
       // Alternate correct/wrong
       const isCorrect = count % 2 === 0;
-      const idx = isCorrect ? payload.correctIdx : (payload.correctIdx + 1) % 8;
+      const idx = isCorrect ? correctIdx : (correctIdx + 1) % 8;
       await s.submit({
         trialId: t.id,
         event: { kind: 'keydown', value: String(idx + 1), rtMs: 800 },
@@ -201,10 +201,10 @@ describe('Relational module', () => {
 
     let t = s.nextTrial();
     while (t) {
-      const payload = t.stimulus.payload as any;
+      const correctIdx = (t.metadata as any).correctIdx as number;
       await s.submit({
         trialId: t.id,
-        event: { kind: 'keydown', value: String(payload.correctIdx + 1), rtMs: 800 },
+        event: { kind: 'keydown', value: String(correctIdx + 1), rtMs: 800 },
         timing: { requestedDurationMs: 0, achievedDurationMs: 800, framesRendered: 48, timingFlag: 'ok' }
       });
       t = s.nextTrial();

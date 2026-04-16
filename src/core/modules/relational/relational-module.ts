@@ -43,11 +43,10 @@ export const relationalModule: TrainingModule = {
         const shuffled = shuffleArray(allChoices, seed);
         const answerIdx = shuffled.findIndex((p) => panelEquals(p, puzzle.answer));
 
-        // Create stimulus payload
+        // Stimulus payload (no correctIdx — the UI should NEVER see the answer).
         const stimulusPayload = {
-          grid: puzzle.panels,      // the 9 panels (with index 8 masked as "?")
-          choices: shuffled,         // 8 answer choices
-          correctIdx: answerIdx,     // which choice is correct (for scoring)
+          grid: puzzle.panels,
+          choices: shuffled,
           ruleCount
         };
 
@@ -60,6 +59,9 @@ export const relationalModule: TrainingModule = {
             kind: 'matrix-3x3',
             payload: stimulusPayload
           },
+          // correctIdx is module-internal; kept off `stimulus.payload` so the
+          // renderer (and DevTools snooping) can't see it.
+          metadata: { correctIdx: answerIdx },
           inputSpec: { accept: ['keyboard'], keys: ['1', '2', '3', '4', '5', '6', '7', '8'] },
           timingSpec: { stimulusMs: 'until-response' }
         };
