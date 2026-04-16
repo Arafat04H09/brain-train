@@ -1,6 +1,7 @@
 import { createResource, Show, For } from 'solid-js';
 import { A, useParams } from '@solidjs/router';
 import { dbInit, dbQuery } from '~/core/storage/db-client';
+import { brierScore, brierDecomposition } from '~/core/adaptive/brier';
 
 interface BlockRow {
   id: string;
@@ -16,6 +17,10 @@ interface TrialAggRow {
   total: number;
   correct: number;
   avg_rt: number | null;
+}
+interface CalibTrialRow {
+  correct: number;
+  response_json: string;
 }
 
 async function loadResults(sessionId: string) {
@@ -36,7 +41,61 @@ async function loadResults(sessionId: string) {
   );
   const trialsByBlock = new Map<string, TrialAggRow>();
   for (const t of trials) trialsByBlock.set(t.block_id, t);
-  return { session, blocks, trialsByBlock };
+
+  // Calibration-specific: fetch per-trial confidence data if any calibration
+  // block is in this session.
+  let calibration: {
+    count: number;
+    accuracy: number;
+    brier: number;
+    decomposition: { reliability: number; resolution: number; uncertainty: number };
+    bins: { bin: string; n: number; meanConf: number; accuracy: number }[];
+  } | null = null;
+  if (blocks.some(b => b.module_id === 'calibration')) {
+    const calibTrials = await dbQuery<CalibTrialRow>(
+      `SELECT correct, response_json FROM trials
+       WHERE block_id IN (SELECT id FROM blocks WHERE session_id = ? AND module_id = 'calibration')`,
+      [sessionId]
+    );
+    const points = calibTrials
+      .map(t => {
+        try {
+          const resp = JSON.parse(t.response_json);
+          const payload = typeof resp?.event?.value === 'string' ? JSON.parse(resp.event.value) : null;
+          const conf = typeof payload?.confidence === 'number' ? payload.confidence / 100 : null;
+          if (conf === null) return null;
+          return { p: conf, outcome: t.correct ? 1 as const : 0 as const };
+        } catch { return null; }
+      })
+      .filter((x): x is { p: number; outcome: 0 | 1 } => x !== null);
+
+    if (points.length > 0) {
+      const acc = points.reduce((s, p) => s + p.outcome, 0) / points.length;
+      const b = brierScore(points);
+      const d = brierDecomposition(points, 5);
+      // Bucket into 10% bins from 50-100%
+      const bucketEdges = [0.5, 0.6, 0.7, 0.8, 0.9, 1.01];
+      const bins = bucketEdges.slice(0, -1).map((lo, i) => {
+        const hi = bucketEdges[i + 1]!;
+        const items = points.filter(p => p.p >= lo && p.p < hi);
+        return {
+          bin: `${Math.round(lo * 100)}-${Math.round((hi - 0.01) * 100)}%`,
+          n: items.length,
+          meanConf: items.length ? items.reduce((s, p) => s + p.p, 0) / items.length : 0,
+          accuracy: items.length ? items.reduce((s, p) => s + p.outcome, 0) / items.length : 0
+        };
+      });
+      calibration = {
+        count: points.length,
+        accuracy: acc,
+        brier: b,
+        decomposition: { reliability: d.reliability, resolution: d.resolution, uncertainty: d.uncertainty },
+        bins
+      };
+    }
+  }
+
+  return { session, blocks, trialsByBlock, calibration };
 }
 
 export function Results() {
@@ -93,6 +152,57 @@ export function Results() {
                 </tbody>
               </table>
             </Show>
+
+            <Show when={d().calibration}>
+              {c => (
+                <div style="margin-top:2rem">
+                  <h3>Calibration</h3>
+                  <p class="muted">
+                    {c().count} items · accuracy {(c().accuracy * 100).toFixed(0)}% ·
+                    Brier <b>{c().brier.toFixed(3)}</b>
+                    <span class="muted" style="margin-left:.4rem">(lower is better; 0 = perfect)</span>
+                  </p>
+                  <p class="muted" style="font-size:.85rem">
+                    reliability {c().decomposition.reliability.toFixed(3)} ·
+                    resolution {c().decomposition.resolution.toFixed(3)} ·
+                    uncertainty {c().decomposition.uncertainty.toFixed(3)}
+                  </p>
+                  <table style="width:100%;border-collapse:collapse;font-size:.85rem;margin-top:.6rem">
+                    <thead>
+                      <tr style="border-bottom:1px solid #2a2f38;text-align:left">
+                        <th style="padding:.3rem">Confidence bin</th>
+                        <th style="padding:.3rem">N</th>
+                        <th style="padding:.3rem">Mean stated</th>
+                        <th style="padding:.3rem">Actual accuracy</th>
+                        <th style="padding:.3rem">Calibration</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <For each={c().bins}>
+                        {b => {
+                          const gap = b.n === 0 ? null : b.accuracy - b.meanConf;
+                          const gapLabel = gap === null
+                            ? '—'
+                            : Math.abs(gap) < 0.05 ? 'calibrated'
+                            : gap > 0 ? `underconfident by ${(gap * 100).toFixed(0)}pt`
+                            : `overconfident by ${(-gap * 100).toFixed(0)}pt`;
+                          return (
+                            <tr style="border-bottom:1px solid #1a1e24">
+                              <td style="padding:.3rem">{b.bin}</td>
+                              <td style="padding:.3rem">{b.n}</td>
+                              <td style="padding:.3rem">{b.n ? (b.meanConf * 100).toFixed(0) + '%' : '—'}</td>
+                              <td style="padding:.3rem">{b.n ? (b.accuracy * 100).toFixed(0) + '%' : '—'}</td>
+                              <td style="padding:.3rem">{gapLabel}</td>
+                            </tr>
+                          );
+                        }}
+                      </For>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Show>
+
             <p style="margin-top:2rem">
               <A href="/">← Home</A> · <A href="/dashboard">Dashboard</A>
             </p>
