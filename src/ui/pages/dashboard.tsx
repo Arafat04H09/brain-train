@@ -21,6 +21,17 @@ interface SessionAccRow {
   accuracy: number;
   start_ts: number;
 }
+interface TransferRow {
+  ts: number;
+  task_id: string;
+  score: number;
+}
+
+// Task display metadata. `lowerIsBetter` for RT tasks; higher-is-better for accuracy tasks.
+const TRANSFER_TASK_META: Record<string, { label: string; lowerIsBetter: boolean; unit: string }> = {
+  'icar-matrix': { label: 'ICAR Matrix (Reasoning)', lowerIsBetter: false, unit: '% correct' },
+  'simple-rt': { label: 'Simple Reaction Time', lowerIsBetter: true, unit: 'ms' }
+};
 
 async function loadSummary() {
   await dbInit();
@@ -30,7 +41,6 @@ async function loadSummary() {
   const domainState = await dbQuery<DomainRow>(
     'SELECT module_id, ewma_performance, sessions_total, last_session_ts FROM domain_state ORDER BY module_id'
   );
-  // Per-session accuracy per domain (session-weighted, averages blocks of that module within each session)
   const perSession = await dbQuery<SessionAccRow>(
     `SELECT b.session_id, b.module_id, AVG(b.actual_accuracy) as accuracy, s.start_ts
      FROM blocks b JOIN sessions s ON s.id = b.session_id
@@ -39,7 +49,10 @@ async function loadSummary() {
      ORDER BY s.start_ts DESC
      LIMIT 120`
   );
-  return { sessions, domainState, perSession };
+  const transfer = await dbQuery<TransferRow>(
+    'SELECT ts, task_id, score FROM transfer_assessments ORDER BY ts ASC'
+  );
+  return { sessions, domainState, perSession, transfer };
 }
 
 function Sparkline(props: { values: number[]; width?: number; height?: number }) {
@@ -116,6 +129,72 @@ export function Dashboard() {
             }}</For>
           </tbody>
         </table>
+      </Show>
+
+      <h3 style="margin-top:2rem">Transfer assessment</h3>
+      <Show when={(data()?.transfer?.length ?? 0) > 0}
+        fallback={<p class="muted">No baseline yet. <A href="/">Run baseline</A> to enable transfer tracking.</p>}>
+        <For each={Object.keys(TRANSFER_TASK_META)}>
+          {taskId => {
+            const meta = TRANSFER_TASK_META[taskId]!;
+            const runs = () => (data()?.transfer ?? []).filter(r => r.task_id === taskId);
+            const baseline = () => runs()[0]?.score ?? null;
+            const latest = () => {
+              const rs = runs();
+              return rs.length > 0 ? rs[rs.length - 1]!.score : null;
+            };
+            const delta = () => {
+              const b = baseline(); const l = latest();
+              if (b === null || l === null || runs().length < 2) return null;
+              const raw = l - b;
+              const improved = meta.lowerIsBetter ? raw < 0 : raw > 0;
+              const pct = meta.lowerIsBetter
+                ? ((b - l) / b) * 100   // RT: shrink = improvement
+                : ((l - b) / Math.max(b, 0.01)) * 100;  // accuracy: grow = improvement
+              return { improved, pct, raw };
+            };
+            const fmt = (v: number) =>
+              meta.lowerIsBetter ? `${Math.round(v)} ms` : `${(v * 100).toFixed(0)}%`;
+
+            return (
+              <div style="margin-bottom:1rem">
+                <p style="margin:.4rem 0;font-size:.95rem">
+                  <b>{meta.label}</b>
+                  <span class="muted" style="margin-left:.5rem">{runs().length} run{runs().length === 1 ? '' : 's'}</span>
+                </p>
+                <Show when={runs().length > 0}>
+                  <p class="muted" style="font-size:.85rem;margin:.2rem 0">
+                    Baseline: <b>{fmt(baseline()!)}</b>
+                    {' · Latest: '}<b>{fmt(latest()!)}</b>
+                    <Show when={delta()}>
+                      {d => (
+                        <span style={`color:${d().improved ? '#4dff99' : '#ff8a8a'};margin-left:.5rem`}>
+                          {d().improved ? '▲' : '▼'} {Math.abs(d().pct).toFixed(0)}%
+                          {d().improved ? ' improved' : ' declined'}
+                        </span>
+                      )}
+                    </Show>
+                  </p>
+                </Show>
+                <Show when={runs().length >= 2}>
+                  <Sparkline
+                    values={meta.lowerIsBetter
+                      ? runs().map(r => {
+                          // Invert so the sparkline goes UP for improvement.
+                          // Normalize against the worst run to fit in 0-1 range.
+                          const vals = runs().map(x => x.score);
+                          const worst = Math.max(...vals);
+                          return worst === 0 ? 0.5 : 1 - (r.score / worst);
+                        })
+                      : runs().map(r => r.score)}
+                    width={300}
+                    height={32}
+                  />
+                </Show>
+              </div>
+            );
+          }}
+        </For>
       </Show>
 
       <h3 style="margin-top:2rem">Recent sessions</h3>

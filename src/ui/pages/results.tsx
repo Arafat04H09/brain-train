@@ -22,6 +22,11 @@ interface CalibTrialRow {
   correct: number;
   response_json: string;
 }
+interface TransferHistRow {
+  ts: number;
+  task_id: string;
+  score: number;
+}
 
 async function loadResults(sessionId: string) {
   await dbInit();
@@ -95,7 +100,91 @@ async function loadResults(sessionId: string) {
     }
   }
 
-  return { session, blocks, trialsByBlock, calibration };
+  // Transfer-specific: if this session had a transfer-battery block, pull prior
+  // assessment history so we can show baseline vs current.
+  let transferHistory: Record<string, TransferHistRow[]> | null = null;
+  if (blocks.some(b => b.module_id === 'transfer-battery')) {
+    const rows = await dbQuery<TransferHistRow>(
+      'SELECT ts, task_id, score FROM transfer_assessments ORDER BY ts ASC'
+    );
+    transferHistory = {};
+    for (const r of rows) {
+      (transferHistory[r.task_id] ??= []).push(r);
+    }
+  }
+
+  return { session, blocks, trialsByBlock, calibration, transferHistory };
+}
+
+const TRANSFER_TASKS: Array<{ id: string; label: string; lowerIsBetter: boolean; fmt: (v: number) => string }> = [
+  { id: 'icar-matrix', label: 'ICAR Matrix (Reasoning)', lowerIsBetter: false, fmt: v => `${(v * 100).toFixed(0)}%` },
+  { id: 'simple-rt', label: 'Simple Reaction Time', lowerIsBetter: true, fmt: v => `${Math.round(v)} ms` }
+];
+
+function TransferSection(props: { history: Record<string, TransferHistRow[]> }) {
+  const isFirstAssessment = () => {
+    const counts = Object.values(props.history).map(a => a.length);
+    return counts.length === 0 || counts.every(n => n <= 1);
+  };
+  return (
+    <div style="margin-top:2rem">
+      <h3>Transfer Assessment</h3>
+      <Show when={isFirstAssessment()}>
+        <p class="muted" style="font-size:.85rem">
+          Baseline recorded — future assessments will show change over time.
+        </p>
+      </Show>
+      <table style="width:100%;border-collapse:collapse;font-size:.9rem">
+        <thead>
+          <tr style="border-bottom:1px solid #2a2f38;text-align:left">
+            <th style="padding:.4rem">Task</th>
+            <th style="padding:.4rem">Baseline</th>
+            <th style="padding:.4rem">This session</th>
+            <th style="padding:.4rem">Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={TRANSFER_TASKS}>
+            {task => {
+              const runs = props.history[task.id] ?? [];
+              const latest = runs.length > 0 ? runs[runs.length - 1]!.score : null;
+              const baseline = runs.length > 0 ? runs[0]!.score : null;
+              const isBaseline = runs.length <= 1;
+              const delta = !isBaseline && baseline !== null && latest !== null
+                ? deltaLabel(baseline, latest, task.lowerIsBetter)
+                : null;
+              return (
+                <tr style="border-bottom:1px solid #1a1e24">
+                  <td style="padding:.4rem"><b>{task.label}</b></td>
+                  <td style="padding:.4rem">{baseline !== null ? task.fmt(baseline) : '—'}</td>
+                  <td style="padding:.4rem">{latest !== null ? task.fmt(latest) : '—'}</td>
+                  <td style={`padding:.4rem;color:${delta?.color ?? '#7c8088'}`}>
+                    {isBaseline ? '(baseline)' : (delta?.text ?? '—')}
+                  </td>
+                </tr>
+              );
+            }}
+          </For>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function deltaLabel(
+  baseline: number,
+  current: number,
+  lowerIsBetter: boolean
+): { text: string; color: string } {
+  if (baseline === current) return { text: '(no change)', color: '#7c8088' };
+  const improved = lowerIsBetter ? current < baseline : current > baseline;
+  const pct = lowerIsBetter
+    ? ((baseline - current) / baseline) * 100
+    : ((current - baseline) / Math.max(baseline, 0.01)) * 100;
+  return {
+    text: `${improved ? '▲' : '▼'} ${Math.abs(pct).toFixed(0)}% vs baseline`,
+    color: improved ? '#4dff99' : '#ff8a8a'
+  };
 }
 
 export function Results() {
@@ -154,43 +243,7 @@ export function Results() {
             </Show>
 
             <Show when={d().blocks.some(b => b.module_id === 'transfer-battery')}>
-              <div style="margin-top:2rem">
-                <h3>Transfer Assessment</h3>
-                <table style="width:100%;border-collapse:collapse;font-size:.9rem">
-                  <thead>
-                    <tr style="border-bottom:1px solid #2a2f38;text-align:left">
-                      <th style="padding:.4rem">Task</th>
-                      <th style="padding:.4rem">Score</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr style="border-bottom:1px solid #1a1e24">
-                      <td style="padding:.4rem"><b>ICAR Matrix (Reasoning)</b></td>
-                      <td style="padding:.4rem">
-                        {(() => {
-                          const matrixBlock = d().blocks.find(b => b.kind === 'assessment-matrix');
-                          const matrixAcc = matrixBlock && d().trialsByBlock.get(matrixBlock.id)
-                            ? d().trialsByBlock.get(matrixBlock.id)!.correct / d().trialsByBlock.get(matrixBlock.id)!.total
-                            : null;
-                          return matrixAcc !== null ? (matrixAcc * 100).toFixed(0) + '%' : '—';
-                        })()}
-                      </td>
-                    </tr>
-                    <tr style="border-bottom:1px solid #1a1e24">
-                      <td style="padding:.4rem"><b>Simple Reaction Time</b></td>
-                      <td style="padding:.4rem">
-                        {(() => {
-                          const rtBlock = d().blocks.find(b => b.kind === 'simple-rt');
-                          const rtMean = rtBlock && d().trialsByBlock.get(rtBlock.id)
-                            ? d().trialsByBlock.get(rtBlock.id)!.avg_rt
-                            : null;
-                          return rtMean !== null ? Math.round(rtMean) + 'ms' : '—';
-                        })()}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <TransferSection history={d().transferHistory ?? {}} />
             </Show>
 
             <Show when={d().calibration}>
