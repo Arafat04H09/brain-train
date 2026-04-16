@@ -6,7 +6,7 @@ export function Home() {
       <h1 class="hero">Intellect Forge</h1>
       <p class="muted">Evidence-based cognitive training. Personal build.</p>
       <p><A href="/today">Start today's session →</A></p>
-      <p class="muted"><A href="/stimulus-debug">stimulus debug</A></p>
+      <p><A href="/dashboard">dashboard</A> · <A href="/stimulus-debug">stimulus debug</A></p>
     </div>
   );
 }
