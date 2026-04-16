@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { calibrationModule } from '~/core/modules/calibration/calibration-module';
 
 describe('Calibration module', () => {
-  it('creates a session with 1 block of 15 trials', () => {
+  it('creates a session with 1 block of 20 trials', () => {
     const s = calibrationModule.createSession({
       moduleId: 'calibration',
       level: {},
@@ -13,7 +13,7 @@ describe('Calibration module', () => {
       updatedTs: Date.now()
     });
     expect(s.blocks).toHaveLength(1);
-    expect(s.blocks[0]?.targetTrialCount).toBe(15);
+    expect(s.blocks[0]?.targetTrialCount).toBe(20);
   });
 
   it('nextTrial produces a calibration-mcq stimulus', () => {
@@ -142,10 +142,10 @@ describe('Calibration module', () => {
 
     let t = s.nextTrial();
     let count = 0;
-    // Get 13/15 correct (86% accuracy) -> should promote to hard
-    while (t && count < 15) {
+    // Get 17/20 correct (85% accuracy) -> should promote to hard
+    while (t && count < 20) {
       const payload = t.stimulus.payload as any;
-      const shouldBeCorrect = count < 13;
+      const shouldBeCorrect = count < 17;
       const choice = shouldBeCorrect ? payload.correctIndex : (payload.correctIndex + 1) % 4;
       await s.submit({
         trialId: t.id,
@@ -178,10 +178,10 @@ describe('Calibration module', () => {
 
     let t = s.nextTrial();
     let count = 0;
-    // Get 7/15 correct (47% accuracy) -> should demote to easy
-    while (t && count < 15) {
+    // Get 9/20 correct (45% accuracy) -> should demote to easy
+    while (t && count < 20) {
       const payload = t.stimulus.payload as any;
-      const shouldBeCorrect = count < 7;
+      const shouldBeCorrect = count < 9;
       const choice = shouldBeCorrect ? payload.correctIndex : (payload.correctIndex + 1) % 4;
       await s.submit({
         trialId: t.id,
@@ -216,7 +216,7 @@ describe('Calibration module', () => {
     let t = s.nextTrial();
     let count = 0;
     // All correct with 90% confidence -> low Brier, high inverted Brier
-    while (t && count < 15) {
+    while (t && count < 20) {
       const payload = t.stimulus.payload as any;
       await s.submit({
         trialId: t.id,

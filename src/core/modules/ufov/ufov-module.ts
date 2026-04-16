@@ -3,7 +3,10 @@ import type { DomainState } from '~/types/domain';
 import { generateUfovTrial, UFOV_SUBTESTS, type UfovSubtest } from './ufov-generator';
 import { Quest } from '~/core/adaptive/quest';
 
-const TRIALS_PER_SUBTEST = 20;
+// 30 trials/subtest balances QUEST convergence (Watson & Pelli 1983 recommend
+// 20–40) with session length. 4 subtests × 30 trials ≈ 8–10 min at typical
+// response rates, matching UFOV research session lengths.
+const TRIALS_PER_SUBTEST = 30;
 
 // Central target answer: left arrow / c for 'car', right arrow / t for 'truck'
 const CAR_KEYS = new Set(['ArrowLeft', 'c']);

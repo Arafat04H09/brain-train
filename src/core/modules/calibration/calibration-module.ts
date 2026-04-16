@@ -2,7 +2,10 @@ import type { TrainingModule, Session, Trial, Response, TrialResult, BlockStats,
 import type { DomainState } from '~/types/domain';
 import { CALIBRATION_ITEMS, type CalibItem } from './question-bank';
 
-const TRIALS_PER_BLOCK = 15;
+// 20 items per session aligns with calibration-training protocols (Hacker
+// et al. 2008; Mellers et al. 2014 used 20–50 per session). 15 was our
+// original shortcut; 20 gives wider coverage of the confidence range.
+const TRIALS_PER_BLOCK = 20;
 
 export const calibrationModule: TrainingModule = {
   id: 'calibration',

@@ -50,26 +50,42 @@ export interface NLevelInput {
   blockHistory: BlockStreamStats[];
   minN?: number;
   maxN?: number;
-  promoteDPrime?: number;
-  demoteDPrime?: number;
+  /** Per-stream accuracy to promote. Jaeggi 2008: 0.90. */
+  promoteAccuracy?: number;
+  /** Per-stream accuracy to demote. Jaeggi 2008: 0.75. */
+  demoteAccuracy?: number;
   demoteConsec?: number;
 }
 
+/**
+ * Jaeggi, Buschkuehl, Jonides & Perrig (2008, PNAS) adaptive rule:
+ * advance to N+1 when block accuracy ≥90% on BOTH streams;
+ * drop to N-1 when accuracy drops below 75% on either stream.
+ * Accuracy here = (hits + correctRejects) / totalTrials per stream.
+ * We require demotion to persist across `demoteConsec` consecutive blocks
+ * so a single bad block doesn't cascade.
+ */
 export function nextNLevel(i: NLevelInput): number {
   const minN = i.minN ?? 1;
   const maxN = i.maxN ?? 10;
-  const promote = i.promoteDPrime ?? 1.5;
-  const demote = i.demoteDPrime ?? 0.5;
+  const promoteAcc = i.promoteAccuracy ?? 0.90;
+  const demoteAcc = i.demoteAccuracy ?? 0.75;
   const consec = i.demoteConsec ?? 2;
   const latest = i.blockHistory[i.blockHistory.length - 1];
   if (!latest) return i.currentN;
 
-  if (latest.position.dPrime >= promote && latest.audio.dPrime >= promote) {
+  const streamAcc = (c: SdtCounts) => (c.hits + c.correctRejects) /
+    Math.max(c.hits + c.misses + c.falseAlarms + c.correctRejects, 1);
+
+  const posAcc = streamAcc(latest.position.counts);
+  const audAcc = streamAcc(latest.audio.counts);
+
+  if (posAcc >= promoteAcc && audAcc >= promoteAcc) {
     return Math.min(i.currentN + 1, maxN);
   }
   const recent = i.blockHistory.slice(-consec);
   if (recent.length >= consec &&
-      recent.every(b => b.position.dPrime <= demote || b.audio.dPrime <= demote)) {
+      recent.every(b => streamAcc(b.position.counts) < demoteAcc || streamAcc(b.audio.counts) < demoteAcc)) {
     return Math.max(i.currentN - 1, minN);
   }
   return i.currentN;

@@ -262,13 +262,17 @@ export const wmModule: TrainingModule = {
           }
         }
 
-        // Adaptive rules
+        // Adaptive rules.
+        // n-back: Jaeggi 2008 90%/75% per-stream accuracy (in nextNLevel).
+        // OSpan: Engle lab typically uses fixed set sizes. The ±1 between-session
+        // rule here is our heuristic (not from a specific paper) — threshold
+        // loosely follows Klingberg-style span training (~80% = next size).
         const newN = nextNLevel({ currentN: n, blockHistory: nbackStats });
         let newOSpanSetSize = ospanSetSize;
         if (lastOSpanScore) {
-          if (lastOSpanScore.partialCredit >= 0.9) {
+          if (lastOSpanScore.partialCredit >= 0.85) {
             newOSpanSetSize = Math.min(ospanSetSize + 1, 7);
-          } else if (lastOSpanScore.partialCredit <= 0.5) {
+          } else if (lastOSpanScore.partialCredit <= 0.6) {
             newOSpanSetSize = Math.max(ospanSetSize - 1, 2);
           }
         }
