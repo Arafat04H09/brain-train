@@ -8,6 +8,7 @@ import { NBackGrid } from '~/ui/components/nback-grid';
 import { UfovStimulus } from '~/ui/components/ufov-stimulus';
 import { EfStimulus } from '~/ui/components/ef-stimulus';
 import { MatrixStimulus } from '~/ui/components/matrix-stimulus';
+import { CalibrationStimulus } from '~/ui/components/calibration-stimulus';
 import { MetacogPrompt } from '~/ui/components/metacog-prompt';
 import type { Session, Trial, Response, ModuleId } from '~/types/module';
 
@@ -81,7 +82,7 @@ export function SessionRunner() {
       }
       setCurrent(trial);
       const resp = await new Promise<Response>((resolve) => {
-        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral' || trial!.stimulus.kind === 'flanker-compound' || trial!.stimulus.kind === 'matrix-3x3') {
+        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral' || trial!.stimulus.kind === 'flanker-compound' || trial!.stimulus.kind === 'matrix-3x3' || trial!.stimulus.kind === 'calibration-mcq') {
           canvasResolver = resolve;
         } else {
           runTrial(trial!).then(resolve);
@@ -122,7 +123,7 @@ export function SessionRunner() {
     const t = current();
     if (pendingPrompt() || !t) return null;
     const k = t.stimulus.kind;
-    if (k === 'nback-grid' || k === 'ufov-peripheral' || k === 'flanker-compound' || k === 'matrix-3x3') return t;
+    if (k === 'nback-grid' || k === 'ufov-peripheral' || k === 'flanker-compound' || k === 'matrix-3x3' || k === 'calibration-mcq') return t;
     return null;
   };
 
@@ -170,6 +171,7 @@ export function SessionRunner() {
           if (trial.stimulus.kind === 'ufov-peripheral') return <UfovStimulus trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'flanker-compound') return <EfStimulus trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'matrix-3x3') return <MatrixStimulus trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'calibration-mcq') return <CalibrationStimulus trial={trial} onDone={onTrialDone} />;
           return null;
         }}
       </Show>

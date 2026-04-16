@@ -4,6 +4,7 @@ export type StimulusKind =
   | 'ufov-peripheral'
   | 'flanker-compound'
   | 'matrix-3x3'
+  | 'calibration-mcq'
   | 'text-question';
 
 export interface StimulusDescriptor {
