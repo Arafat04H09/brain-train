@@ -11,7 +11,10 @@
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
-    "paths": { "~/*": ["./src/*"] }
+    "paths": {
+      "~/*": ["./src/*"],
+      "numeric_es6": ["./node_modules/numeric/index.js"]
+    }
   },
   "include": ["src/**/*", "tests/**/*"]
 }

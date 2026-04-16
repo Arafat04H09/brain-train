@@ -12,7 +12,10 @@ export default defineConfig({
   server: { headers: coopHeaders },
   preview: { headers: coopHeaders },
   resolve: {
-    alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) }
+    alias: {
+      '~': fileURLToPath(new URL('./src', import.meta.url)),
+      'numeric_es6': 'numeric'
+    }
   },
   worker: { format: 'es' },
   optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] }
