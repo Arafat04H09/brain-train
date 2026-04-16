@@ -62,4 +62,17 @@ describe('Question bank', () => {
     const uniqueQuestions = new Set(questions);
     expect(uniqueQuestions.size).toBe(questions.length);
   });
+
+  it('every item is from a verified OSS source (no synthetic or AI-generated)', () => {
+    // Guard against regression: every item ID must be prefixed with a known
+    // real-source tag. Synthetic/AI-generated items (synth-*, seed-*) are not
+    // acceptable.
+    const verifiedPrefixes = ['mmlu-', 'otdb-', 'tqa-'];
+    for (const item of CALIBRATION_ITEMS) {
+      const ok = verifiedPrefixes.some(p => item.id.startsWith(p));
+      if (!ok) {
+        throw new Error(`Item ${item.id} is not from a verified OSS source`);
+      }
+    }
+  });
 });
