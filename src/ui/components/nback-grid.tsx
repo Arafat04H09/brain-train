@@ -9,7 +9,7 @@ export function NBackGrid(props: { trial: Trial; onDone: (r: Response) => void }
   onMount(async () => {
     if (!canvasRef) return;
     const offscreen = canvasRef.transferControlToOffscreen();
-    setPrompt('A / ← = position match · L / → = audio match');
+    setPrompt('A = position match · L = audio match');
     const resp = await runTrial(props.trial, offscreen);
     props.onDone(resp);
   });

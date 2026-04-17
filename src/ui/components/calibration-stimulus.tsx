@@ -28,17 +28,25 @@ export function CalibrationStimulus(props: {
       setChoice(idx);
       setStep('confidence');
       e.preventDefault();
+      e.stopPropagation();
     } else if (step() === 'confidence') {
       if (e.key === 'ArrowLeft') {
-        setConfidence(Math.max(25, confidence() - 1));
+        setConfidence(Math.max(25, confidence() - 5));
         e.preventDefault();
+        e.stopPropagation();
       } else if (e.key === 'ArrowRight') {
-        setConfidence(Math.min(99, confidence() + 1));
+        setConfidence(Math.min(99, confidence() + 5));
         e.preventDefault();
+        e.stopPropagation();
       } else if (e.key === 'Enter') {
         handleSubmit();
         e.preventDefault();
+        e.stopPropagation();
       }
+    }
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
     }
   }
 

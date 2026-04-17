@@ -1,9 +1,9 @@
 import { createResource, For, Show } from 'solid-js';
 import { A, useNavigate } from '@solidjs/router';
-import { dbInit, dbQuery, dbExec } from '~/core/storage/db-client';
+import { dbInit, dbQuery } from '~/core/storage/db-client';
 import { saveSession } from '~/core/storage/repos';
 import { listModules } from '~/core/modules/registry';
-import type { SessionPlan } from '~/types/domain';
+import type { SessionPlan, Phase } from '~/types/domain';
 import type { ModuleId } from '~/types/module';
 
 interface DomainStateRow {
@@ -18,6 +18,11 @@ interface AssessmentState {
   taskCount: number;
 }
 
+interface OverallStats {
+  totalSessions: number;
+  currentPhase: Phase;
+}
+
 async function loadDomainStates(): Promise<Record<string, DomainStateRow>> {
   await dbInit();
   const rows = await dbQuery<DomainStateRow>(
@@ -26,6 +31,16 @@ async function loadDomainStates(): Promise<Record<string, DomainStateRow>> {
   const map: Record<string, DomainStateRow> = {};
   for (const r of rows) map[r.module_id] = r;
   return map;
+}
+
+async function loadOverallStats(): Promise<OverallStats> {
+  await dbInit();
+  const rows = await dbQuery<{ count: number }>('SELECT COUNT(*) as count FROM sessions WHERE completed = 1');
+  const latestRow = await dbQuery<{ phase: string }>('SELECT phase FROM sessions ORDER BY start_ts DESC LIMIT 1');
+  return {
+    totalSessions: rows[0]?.count ?? 0,
+    currentPhase: (latestRow[0]?.phase as Phase) ?? 'ramp'
+  };
 }
 
 async function loadAssessmentState(): Promise<AssessmentState> {
@@ -59,13 +74,14 @@ export function Home() {
   const modules = listModules().filter(m => m.id !== 'placeholder' && m.id !== 'transfer-battery');
   const [states] = createResource(loadDomainStates);
   const [assessmentState] = createResource(loadAssessmentState);
+  const [overall] = createResource(loadOverallStats);
 
   async function startSingle(moduleId: ModuleId, minutes: number) {
     await dbInit();
     const plan: SessionPlan = {
       id: crypto.randomUUID(),
       createdTs: Date.now(),
-      phase: 'ramp',
+      phase: overall()?.currentPhase ?? 'ramp',
       modules: [{ moduleId, targetMinutes: minutes }],
       interleave: false,
       metacogOverlay: true
@@ -79,7 +95,7 @@ export function Home() {
     const plan: SessionPlan = {
       id: crypto.randomUUID(),
       createdTs: Date.now(),
-      phase: 'ramp',
+      phase: overall()?.currentPhase ?? 'ramp',
       modules: [{ moduleId: 'transfer-battery', targetMinutes: 12 }],
       interleave: false,
       metacogOverlay: false
@@ -90,9 +106,34 @@ export function Home() {
 
   return (
     <div class="container">
-      <h1 class="hero">Intellect Forge</h1>
-      <p class="muted">Evidence-based cognitive training. Personal build.</p>
-      <p><A href="/today">Start today's session →</A> <span class="muted">(orchestrator picks)</span></p>
+      <header style="margin-bottom: 3rem">
+        <h1 class="hero">Intellect Forge</h1>
+        <div class="flex-between">
+          <p class="muted" style="margin: 0">Evidence-based cognitive training engine.</p>
+          <div class="mono" style="font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em">
+            System Online
+          </div>
+        </div>
+      </header>
+
+      <section class="panel" style="border-left: 4px solid var(--accent); background: linear-gradient(90deg, #1a1e24 0%, var(--panel) 100%)">
+        <h2 style="font-size: 1.25rem; margin-bottom: 1rem">Current Status</h2>
+        <div class="card-grid" style="margin-bottom: 1.5rem">
+          <div>
+            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem">Active Phase</div>
+            <div class="mono" style="font-size: 1.1rem; color: var(--accent)">{overall()?.currentPhase ?? 'ramp'}</div>
+          </div>
+          <div>
+            <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem">Total Sessions</div>
+            <div class="mono" style="font-size: 1.1rem">{overall()?.totalSessions ?? 0}</div>
+          </div>
+        </div>
+        <A href="/today">
+          <button class="primary" style="width: 100%; padding: 1rem; font-size: 1rem">
+            Begin Today's Protocol →
+          </button>
+        </A>
+      </section>
 
       <Show when={assessmentState()}>
         {aState => {
@@ -101,55 +142,68 @@ export function Home() {
           const isDue = daysSinceLast === null || daysSinceLast >= 28;
 
           return (
-            <div style="margin-top:1.5rem;padding:1rem;background:#1a1e24;border-left:3px solid #7aa2ff;border-radius:4px">
+            <div class="panel" style="border-left: 4px solid #f2c94c">
               <Show when={!lastTs} fallback={
                 <Show when={isDue} fallback={
-                  <p style="margin:0">
-                    <span class="muted">Next assessment in {28 - daysSinceLast!}d</span>
+                  <p class="muted" style="margin:0">
+                    Next transfer assessment in <span class="mono" style="color: var(--fg)">{28 - daysSinceLast!}d</span>
                   </p>
                 }>
-                  <p style="margin:0;margin-bottom:.5rem">
-                    <b>Re-assessment due</b> — last run {daysSinceLast}d ago
-                  </p>
-                  <button onClick={startAssessment} style="background:#7aa2ff;color:#14181e;font-weight:bold">Start assessment</button>
+                  <div class="flex-between">
+                    <div>
+                      <h3 style="font-size: 1rem; margin-bottom: 0.25rem">Re-assessment Due</h3>
+                      <p class="muted" style="margin:0">Last baseline captured {daysSinceLast} days ago.</p>
+                    </div>
+                    <button onClick={startAssessment}>Run Assessment</button>
+                  </div>
                 </Show>
               }>
-                <p style="margin:0;margin-bottom:.5rem">
-                  <b>Run baseline assessment</b> to enable transfer tracking
-                </p>
-                <button onClick={startAssessment} style="background:#7aa2ff;color:#14181e;font-weight:bold">Start baseline</button>
+                <div class="flex-between">
+                  <div>
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem">Baseline Required</h3>
+                    <p class="muted" style="margin:0">Establish your cognitive baseline to track transfer effects.</p>
+                  </div>
+                  <button onClick={startAssessment} class="primary">Start Baseline</button>
+                </div>
               </Show>
             </div>
           );
         }}
       </Show>
 
-      <h3 style="margin-top:2rem">Or train a specific domain</h3>
-      <ul style="list-style:none;padding:0">
-        <For each={modules}>
-          {m => {
-            const state = () => states()?.[m.id];
-            return (
-              <li style="padding:.6rem 0;border-bottom:1px solid #1a1e24;display:flex;align-items:center;justify-content:space-between;gap:1rem">
-                <div style="flex:1;min-width:0">
-                  <div><b>{m.displayName}</b>
-                    <span class="muted"> · ~{m.estimatedMinutes} min</span>
+      <section style="margin-top: 3rem">
+        <h3 style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 1.5rem">
+          Training Modules
+        </h3>
+        <div class="card-grid">
+          <For each={modules}>
+            {m => {
+              const state = () => states()?.[m.id];
+              return (
+                <div class="panel" style="margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between">
+                  <div>
+                    <h4 style="margin-bottom: 0.25rem">{m.displayName}</h4>
+                    <p class="muted" style="font-size: 0.8rem; margin-bottom: 1rem">
+                      {state()
+                        ? `${state()!.sessions_total} sessions · ${formatLastTrained(state()!.last_session_ts)}`
+                        : 'No history recorded'}
+                    </p>
                   </div>
-                  <div class="muted" style="font-size:.8rem;margin-top:.2rem">
-                    {state()
-                      ? `${state()!.sessions_total} sessions · last ${formatLastTrained(state()!.last_session_ts)}`
-                      : 'not yet trained'}
-                  </div>
+                  <button onClick={() => startSingle(m.id, m.estimatedMinutes)} style="width: 100%">
+                    Train · {m.estimatedMinutes}m
+                  </button>
                 </div>
-                <button onClick={() => startSingle(m.id, m.estimatedMinutes)}>Start</button>
-              </li>
-            );
-          }}
-        </For>
-      </ul>
-      <p style="margin-top:2rem" class="muted">
-        <A href="/dashboard">dashboard</A> · <A href="/stimulus-debug">stimulus debug</A>
-      </p>
+              );
+            }}
+          </For>
+        </div>
+      </section>
+
+      <footer style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--panel-border); display: flex; gap: 1.5rem">
+        <A href="/dashboard" class="muted" style="text-decoration: underline">Analytics Dashboard</A>
+        <A href="/about" class="muted" style="text-decoration: underline">About &amp; Science</A>
+        <A href="/stimulus-debug" class="muted" style="text-decoration: underline">Hardware Calibration</A>
+      </footer>
     </div>
   );
 }

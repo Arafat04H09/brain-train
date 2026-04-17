@@ -47,8 +47,6 @@ async function loadResults(sessionId: string) {
   const trialsByBlock = new Map<string, TrialAggRow>();
   for (const t of trials) trialsByBlock.set(t.block_id, t);
 
-  // Calibration-specific: fetch per-trial confidence data if any calibration
-  // block is in this session.
   let calibration: {
     count: number;
     accuracy: number;
@@ -78,7 +76,6 @@ async function loadResults(sessionId: string) {
       const acc = points.reduce((s, p) => s + p.outcome, 0) / points.length;
       const b = brierScore(points);
       const d = brierDecomposition(points, 5);
-      // Bucket over the 25-100% range used by the MCQ slider. 5 bins of 15%.
       const bucketEdges = [0.25, 0.4, 0.55, 0.7, 0.85, 1.01];
       const bins = bucketEdges.slice(0, -1).map((lo, i) => {
         const hi = bucketEdges[i + 1]!;
@@ -100,8 +97,6 @@ async function loadResults(sessionId: string) {
     }
   }
 
-  // Transfer-specific: if this session had a transfer-battery block, pull prior
-  // assessment history so we can show baseline vs current.
   let transferHistory: Record<string, TransferHistRow[]> | null = null;
   if (blocks.some(b => b.module_id === 'transfer-battery')) {
     const rows = await dbQuery<TransferHistRow>(
@@ -118,7 +113,7 @@ async function loadResults(sessionId: string) {
 
 const TRANSFER_TASKS: Array<{ id: string; label: string; lowerIsBetter: boolean; fmt: (v: number) => string }> = [
   { id: 'matrix-reasoning', label: 'Matrix Reasoning', lowerIsBetter: false, fmt: v => `${(v * 100).toFixed(0)}%` },
-  { id: 'simple-rt', label: 'Simple Reaction Time', lowerIsBetter: true, fmt: v => `${Math.round(v)} ms` }
+  { id: 'simple-rt', label: 'Simple Reaction Time', lowerIsBetter: true, fmt: v => `${Math.round(v)}ms` }
 ];
 
 function TransferSection(props: { history: Record<string, TransferHistRow[]> }) {
@@ -127,20 +122,20 @@ function TransferSection(props: { history: Record<string, TransferHistRow[]> }) 
     return counts.length === 0 || counts.every(n => n <= 1);
   };
   return (
-    <div style="margin-top:2rem">
-      <h3>Transfer Assessment</h3>
+    <section class="panel" style="margin-top: 2rem; border-left: 4px solid #f2c94c">
+      <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem">Transfer Effects</h3>
       <Show when={isFirstAssessment()}>
-        <p class="muted" style="font-size:.85rem">
-          Baseline recorded — future assessments will show change over time.
+        <p class="muted" style="margin-bottom: 1rem">
+          Baseline recorded. Subsequent assessments will track longitudinal change.
         </p>
       </Show>
-      <table style="width:100%;border-collapse:collapse;font-size:.9rem">
+      <table>
         <thead>
-          <tr style="border-bottom:1px solid #2a2f38;text-align:left">
-            <th style="padding:.4rem">Task</th>
-            <th style="padding:.4rem">Baseline</th>
-            <th style="padding:.4rem">This session</th>
-            <th style="padding:.4rem">Change</th>
+          <tr>
+            <th>Task</th>
+            <th>Baseline</th>
+            <th>Current</th>
+            <th>Delta</th>
           </tr>
         </thead>
         <tbody>
@@ -154,12 +149,12 @@ function TransferSection(props: { history: Record<string, TransferHistRow[]> }) 
                 ? deltaLabel(baseline, latest, task.lowerIsBetter)
                 : null;
               return (
-                <tr style="border-bottom:1px solid #1a1e24">
-                  <td style="padding:.4rem"><b>{task.label}</b></td>
-                  <td style="padding:.4rem">{baseline !== null ? task.fmt(baseline) : '—'}</td>
-                  <td style="padding:.4rem">{latest !== null ? task.fmt(latest) : '—'}</td>
-                  <td style={`padding:.4rem;color:${delta?.color ?? '#7c8088'}`}>
-                    {isBaseline ? '(baseline)' : (delta?.text ?? '—')}
+                <tr>
+                  <td><b style="color: var(--fg)">{task.label}</b></td>
+                  <td class="mono">{baseline !== null ? task.fmt(baseline) : '—'}</td>
+                  <td class="mono">{latest !== null ? task.fmt(latest) : '—'}</td>
+                  <td class="mono" style={`color:${delta?.color ?? 'var(--muted)'}`}>
+                    {isBaseline ? 'BASELINE' : (delta?.text ?? '—')}
                   </td>
                 </tr>
               );
@@ -167,14 +162,7 @@ function TransferSection(props: { history: Record<string, TransferHistRow[]> }) 
           </For>
         </tbody>
       </table>
-      <p class="muted" style="font-size:.8rem;margin-top:.75rem">
-        Note: Matrix Reasoning uses procedurally-generated items with the same
-        rule engine as the Relational Reasoning training module. Improvement
-        here reflects near-transfer (within-generator). True far-transfer
-        measurement requires independent validated items (e.g., real ICAR
-        Sample Test) — not yet ingested.
-      </p>
-    </div>
+    </section>
   );
 }
 
@@ -183,13 +171,13 @@ function deltaLabel(
   current: number,
   lowerIsBetter: boolean
 ): { text: string; color: string } {
-  if (baseline === current) return { text: '(no change)', color: '#7c8088' };
+  if (baseline === current) return { text: '±0%', color: 'var(--muted)' };
   const improved = lowerIsBetter ? current < baseline : current > baseline;
   const pct = lowerIsBetter
     ? ((baseline - current) / baseline) * 100
     : ((current - baseline) / Math.max(baseline, 0.01)) * 100;
   return {
-    text: `${improved ? '▲' : '▼'} ${Math.abs(pct).toFixed(0)}% vs baseline`,
+    text: `${improved ? '▲' : '▼'} ${Math.abs(pct).toFixed(0)}%`,
     color: improved ? '#4dff99' : '#ff8a8a'
   };
 }
@@ -199,55 +187,67 @@ export function Results() {
   const [data] = createResource(() => params.sessionId!, loadResults);
 
   return (
-    <div class="container">
-      <h1 class="hero">Session complete</h1>
-      <Show when={data()} fallback={<p class="muted">Loading…</p>}>
+    <div class="container" style="max-width: 800px">
+      <header style="margin-bottom: 3rem">
+        <div class="flex-between">
+          <h1 class="hero" style="margin: 0">Session Complete</h1>
+          <div class="mono" style="font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em">
+            Data Processed
+          </div>
+        </div>
+        <Show when={data()?.session}>
+          {s => (
+            <p class="muted">
+              Phase: <span class="mono" style="color: var(--fg)">{s().phase}</span> · 
+              Duration: <span class="mono" style="color: var(--fg)">{s().start_ts && s().end_ts ? Math.round((s().end_ts! - s().start_ts) / 1000) : 0}s</span>
+            </p>
+          )}
+        </Show>
+      </header>
+
+      <Show when={data()} fallback={<p class="muted mono">INITIALIZING ANALYTICS ENGINE…</p>}>
         {d => (
           <div>
-            <p class="muted">
-              Phase: <b>{d().session?.phase ?? '—'}</b>
-              {d().session?.start_ts && d().session?.end_ts &&
-                ` · Duration: ${Math.round(((d().session!.end_ts! - d().session!.start_ts) / 1000))}s`}
-            </p>
-            <h3>Blocks</h3>
-            <Show when={d().blocks.length > 0} fallback={<p class="muted">No block data recorded.</p>}>
-              <table style="width:100%;border-collapse:collapse;font-size:.9rem">
-                <thead>
-                  <tr style="border-bottom:1px solid #2a2f38;text-align:left">
-                    <th style="padding:.4rem">#</th>
-                    <th style="padding:.4rem">Kind</th>
-                    <th style="padding:.4rem">Trials</th>
-                    <th style="padding:.4rem">Accuracy</th>
-                    <th style="padding:.4rem">Predicted</th>
-                    <th style="padding:.4rem">Avg RT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={d().blocks}>
-                    {b => {
-                      const t = d().trialsByBlock.get(b.id);
-                      const acc = t && t.total > 0 ? t.correct / t.total : null;
-                      const predicted = b.metacog_prediction;
-                      const brierPoint = predicted !== null && acc !== null
-                        ? Math.pow(predicted - acc, 2).toFixed(3)
-                        : '—';
-                      return (
-                        <tr style="border-bottom:1px solid #1a1e24">
-                          <td style="padding:.4rem">{b.block_index + 1}</td>
-                          <td style="padding:.4rem">{b.kind}</td>
-                          <td style="padding:.4rem">{t ? `${t.correct}/${t.total}` : '—'}</td>
-                          <td style="padding:.4rem">{acc !== null ? (acc * 100).toFixed(0) + '%' : '—'}</td>
-                          <td style="padding:.4rem">
-                            {predicted !== null ? `${(predicted * 100).toFixed(0)}% (Brier ${brierPoint})` : '—'}
-                          </td>
-                          <td style="padding:.4rem">{t?.avg_rt ? `${Math.round(t.avg_rt)}ms` : '—'}</td>
-                        </tr>
-                      );
-                    }}
-                  </For>
-                </tbody>
-              </table>
-            </Show>
+            <section class="panel">
+              <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem">Performance Breakdown</h3>
+              <Show when={d().blocks.length > 0} fallback={<p class="muted">No telemetry captured.</p>}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Module</th>
+                      <th>Accuracy</th>
+                      <th>Pred. (Brier)</th>
+                      <th>Latency</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <For each={d().blocks}>
+                      {b => {
+                        const t = d().trialsByBlock.get(b.id);
+                        const acc = t && t.total > 0 ? t.correct / t.total : null;
+                        const predicted = b.metacog_prediction;
+                        const brierPoint = predicted !== null && acc !== null
+                          ? Math.pow(predicted - acc, 2).toFixed(3)
+                          : '—';
+                        return (
+                          <tr>
+                            <td class="mono muted">{b.block_index + 1}</td>
+                            <td class="mono" style="color: var(--accent)">{b.kind}</td>
+                            <td class="mono">{acc !== null ? (acc * 100).toFixed(0) + '%' : '—'}</td>
+                            <td class="mono">
+                              {predicted !== null ? `${(predicted * 100).toFixed(0)}%` : '—'}
+                              <span class="muted" style="font-size: 0.75rem; margin-left: 0.5rem">({brierPoint})</span>
+                            </td>
+                            <td class="mono">{t?.avg_rt ? `${Math.round(t.avg_rt)}ms` : '—'}</td>
+                          </tr>
+                        );
+                      }}
+                    </For>
+                  </tbody>
+                </table>
+              </Show>
+            </section>
 
             <Show when={d().blocks.some(b => b.module_id === 'transfer-battery')}>
               <TransferSection history={d().transferHistory ?? {}} />
@@ -255,26 +255,31 @@ export function Results() {
 
             <Show when={d().calibration}>
               {c => (
-                <div style="margin-top:2rem">
-                  <h3>Calibration</h3>
-                  <p class="muted">
-                    {c().count} items · accuracy {(c().accuracy * 100).toFixed(0)}% ·
-                    Brier <b>{c().brier.toFixed(3)}</b>
-                    <span class="muted" style="margin-left:.4rem">(lower is better; 0 = perfect)</span>
-                  </p>
-                  <p class="muted" style="font-size:.85rem">
-                    reliability {c().decomposition.reliability.toFixed(3)} ·
-                    resolution {c().decomposition.resolution.toFixed(3)} ·
-                    uncertainty {c().decomposition.uncertainty.toFixed(3)}
-                  </p>
-                  <table style="width:100%;border-collapse:collapse;font-size:.85rem;margin-top:.6rem">
+                <section class="panel" style="margin-top: 2rem">
+                  <div class="flex-between" style="margin-bottom: 1.5rem">
+                    <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin: 0">Calibration Reliability</h3>
+                    <div class="mono" style="font-size: 1.25rem; color: var(--accent)">{c().brier.toFixed(3)} <span class="muted" style="font-size: 0.7rem">BRIER</span></div>
+                  </div>
+                  
+                  <div class="card-grid" style="margin-bottom: 1.5rem">
+                    <div>
+                      <div class="muted" style="font-size: 0.7rem; text-transform: uppercase">Reliability</div>
+                      <div class="mono">{c().decomposition.reliability.toFixed(3)}</div>
+                    </div>
+                    <div>
+                      <div class="muted" style="font-size: 0.7rem; text-transform: uppercase">Resolution</div>
+                      <div class="mono">{c().decomposition.resolution.toFixed(3)}</div>
+                    </div>
+                  </div>
+
+                  <table>
                     <thead>
-                      <tr style="border-bottom:1px solid #2a2f38;text-align:left">
-                        <th style="padding:.3rem">Confidence bin</th>
-                        <th style="padding:.3rem">N</th>
-                        <th style="padding:.3rem">Mean stated</th>
-                        <th style="padding:.3rem">Actual accuracy</th>
-                        <th style="padding:.3rem">Calibration</th>
+                      <tr>
+                        <th>Confidence Bin</th>
+                        <th>N</th>
+                        <th>Mean Stated</th>
+                        <th>Actual Accuracy</th>
+                        <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -283,29 +288,32 @@ export function Results() {
                           const gap = b.n === 0 ? null : b.accuracy - b.meanConf;
                           const gapLabel = gap === null
                             ? '—'
-                            : Math.abs(gap) < 0.05 ? 'calibrated'
-                            : gap > 0 ? `underconfident by ${(gap * 100).toFixed(0)}pt`
-                            : `overconfident by ${(-gap * 100).toFixed(0)}pt`;
+                            : Math.abs(gap) < 0.05 ? 'CALIBRATED'
+                            : gap > 0 ? 'UNDERCONFIDENT'
+                            : 'OVERCONFIDENT';
                           return (
-                            <tr style="border-bottom:1px solid #1a1e24">
-                              <td style="padding:.3rem">{b.bin}</td>
-                              <td style="padding:.3rem">{b.n}</td>
-                              <td style="padding:.3rem">{b.n ? (b.meanConf * 100).toFixed(0) + '%' : '—'}</td>
-                              <td style="padding:.3rem">{b.n ? (b.accuracy * 100).toFixed(0) + '%' : '—'}</td>
-                              <td style="padding:.3rem">{gapLabel}</td>
+                            <tr>
+                              <td class="mono">{b.bin}</td>
+                              <td class="mono">{b.n}</td>
+                              <td class="mono">{b.n ? (b.meanConf * 100).toFixed(0) + '%' : '—'}</td>
+                              <td class="mono">{b.n ? (b.accuracy * 100).toFixed(0) + '%' : '—'}</td>
+                              <td class="mono" style={`font-size: 0.75rem; color: ${gap === null || Math.abs(gap) < 0.05 ? 'var(--muted)' : (gap > 0 ? '#7aa2ff' : '#ff8a8a')}`}>
+                                {gapLabel}
+                              </td>
                             </tr>
                           );
                         }}
                       </For>
                     </tbody>
                   </table>
-                </div>
+                </section>
               )}
             </Show>
 
-            <p style="margin-top:2rem">
-              <A href="/">← Home</A> · <A href="/dashboard">Dashboard</A>
-            </p>
+            <footer style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--panel-border); display: flex; gap: 1.5rem">
+              <A href="/" class="muted" style="text-decoration: underline">Home Terminal</A>
+              <A href="/dashboard" class="muted" style="text-decoration: underline">Longitudinal Analytics</A>
+            </footer>
           </div>
         )}
       </Show>

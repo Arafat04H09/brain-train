@@ -212,7 +212,10 @@ function drawStimulus(trial: Trial) {
     // Random-dot mask after stimulus duration (UFOV-specific).
     // Sparser than before — dense masks turn into visual chaos and don't help
     // disrupt iconic memory more than a moderate-density mask already does.
+    const currentTrialId = trial.id;
     setTimeout(() => {
+      // Prevent bleeding into the next trial if this one ended early
+      if (!pending || pending.trial.id !== currentTrialId) return;
       if (!canvas) return;
       const ctx2 = canvas.getContext('2d')!;
       ctx2.fillStyle = '#14181e'; ctx2.fillRect(0, 0, w, h);
@@ -242,12 +245,14 @@ function drawStimulus(trial: Trial) {
     const cx = w / 2, cy = h / 2;
     const flankerColor = p.flankerCongruent ? p.color : (p.color === 'red' ? 'blue' : 'red');
     const flankerShape = p.flankerCongruent ? p.shape : (p.shape === 'circle' ? 'square' : 'circle');
-    const scale = p.size === 'large' ? 1.3 : 1;
+    const scale = p.size === 'large' ? 1.4 : 0.75;
     draw(cx - 100, cy, flankerColor, flankerShape, scale);
     draw(cx, cy, p.color, p.shape, scale);
     draw(cx + 100, cy, flankerColor, flankerShape, scale);
     if (p.hasStopSignal) {
+      const currentTrialId = trial.id;
       setTimeout(() => {
+        if (!pending || pending.trial.id !== currentTrialId) return;
         if (!canvas) return;
         const ctx2 = canvas.getContext('2d')!;
         ctx2.strokeStyle = '#ff4d4d'; ctx2.lineWidth = 8;
@@ -267,19 +272,31 @@ function drawStimulus(trial: Trial) {
       red: '#ff4d4d', blue: '#4d4dff', green: '#4dff4d', yellow: '#ffff4d'
     };
 
-    const drawPanel = (cx: number, cy: number, panel: any) => {
-      const sizeMap: Record<string, number> = { small: 20, medium: 30, large: 40 };
-      const size = sizeMap[panel.size] ?? 30;
+    const drawPanel = (cx: number, cy: number, panel: any, boxScale = 1) => {
+      const sizeMap: Record<string, number> = { small: 14, medium: 26, large: 42 };
+      const size = (sizeMap[panel.size] ?? 26) * boxScale;
       const count = panel.count ?? 1;
 
-      // Draw count copies in a small grid within the cell
-      const spacing = size + 8;
-      const startX = cx - (spacing * (count - 1)) / 2;
-      const startY = cy;
+      // Adjust spacing based on size to ensure they fit in the 120x120 or 80x80 cell
+      const spacing = size + (4 * boxScale); 
+      
+      // Calculate starting positions to center the group
+      let positions = [];
+      if (count === 1) {
+        positions.push({ x: cx, y: cy });
+      } else if (count === 2) {
+        positions.push({ x: cx - spacing / 2, y: cy });
+        positions.push({ x: cx + spacing / 2, y: cy });
+      } else if (count === 3) {
+        // Triangle formation to keep them tight
+        positions.push({ x: cx, y: cy - spacing / 2 });
+        positions.push({ x: cx - spacing / 2, y: cy + spacing / 2 });
+        positions.push({ x: cx + spacing / 2, y: cy + spacing / 2 });
+      }
 
       for (let i = 0; i < count; i++) {
-        const x = startX + i * spacing;
-        const y = startY;
+        const x = positions[i]!.x;
+        const y = positions[i]!.y;
         ctx.fillStyle = colors[panel.color] ?? '#fff';
 
         if (panel.shape === 'circle') {
@@ -333,7 +350,7 @@ function drawStimulus(trial: Trial) {
           const idx = row * 3 + col;
           const panel = p.grid[idx];
           if (panel) {
-            drawPanel(x + cellSize / 2, y + cellSize / 2, panel);
+            drawPanel(x + cellSize / 2, y + cellSize / 2, panel, 1);
           }
         }
       }
@@ -362,7 +379,7 @@ function drawStimulus(trial: Trial) {
       ctx.strokeRect(x, y, choiceCellSize, choiceCellSize);
 
       if (p.choices[i]) {
-        drawPanel(x + choiceCellSize / 2, y + choiceCellSize / 2 - 10, p.choices[i]);
+        drawPanel(x + choiceCellSize / 2, y + choiceCellSize / 2 - 10, p.choices[i], 0.66);
       }
 
       // Draw choice number
@@ -370,6 +387,87 @@ function drawStimulus(trial: Trial) {
       ctx.font = '12px system-ui';
       ctx.fillText(String(i + 1), x + choiceCellSize / 2, y + choiceCellSize - 10);
     }
+  }
+
+  if (trial.stimulus.kind === 'ef-flanker-arrows') {
+    const p = trial.stimulus.payload as { centerDirection: string; flankerDirection: string };
+    const cx = w / 2, cy = h / 2;
+    const center = p.centerDirection === 'left' ? '\u2190' : '\u2192';
+    const flank = p.flankerDirection === 'left' ? '\u2190' : '\u2192';
+    ctx.font = '64px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const sp = 70;
+    ctx.fillStyle = '#888';
+    ctx.fillText(flank, cx - 2 * sp, cy);
+    ctx.fillText(flank, cx - sp, cy);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(center, cx, cy);
+    ctx.fillStyle = '#888';
+    ctx.fillText(flank, cx + sp, cy);
+    ctx.fillText(flank, cx + 2 * sp, cy);
+  }
+
+  if (trial.stimulus.kind === 'ef-stop-signal-arrow') {
+    const p = trial.stimulus.payload as { direction: string; isStopTrial: boolean; ssdMs: number };
+    const cx = w / 2, cy = h / 2;
+    ctx.fillStyle = '#fff';
+    ctx.font = '80px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.direction === 'left' ? '\u2190' : '\u2192', cx, cy);
+    if (p.isStopTrial) {
+      const currentTrialId = trial.id;
+      setTimeout(() => {
+        if (!pending || pending.trial.id !== currentTrialId) return;
+        if (!canvas) return;
+        const ctx2 = canvas.getContext('2d')!;
+        ctx2.strokeStyle = '#ff4d4d';
+        ctx2.lineWidth = 8;
+        ctx2.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+        ctx2.fillStyle = '#ff4d4d';
+        ctx2.font = '28px system-ui';
+        ctx2.textAlign = 'center';
+        ctx2.textBaseline = 'top';
+        ctx2.fillText('STOP', canvas.width / 2, 16);
+      }, p.ssdMs);
+    }
+  }
+
+  if (trial.stimulus.kind === 'ef-task-switch') {
+    const p = trial.stimulus.payload as { cue: string; color: string; shape: string };
+    const cx = w / 2, cy = h / 2;
+    ctx.fillStyle = '#7aa2ff';
+    ctx.font = 'bold 36px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.cue, cx, 60);
+    ctx.fillStyle = '#555';
+    ctx.font = '16px system-ui';
+    ctx.fillText('Wait for shape\u2026', cx, cy);
+    const currentTrialId = trial.id;
+    setTimeout(() => {
+      if (!pending || pending.trial.id !== currentTrialId) return;
+      if (!canvas) return;
+      const ctx2 = canvas.getContext('2d')!;
+      ctx2.fillStyle = '#14181e';
+      ctx2.fillRect(0, 80, canvas.width, canvas.height - 80);
+      ctx2.fillStyle = p.cue === 'COLOR' ? '#7aa2ff' : '#fff';
+      ctx2.font = 'bold 36px system-ui';
+      ctx2.textAlign = 'center';
+      ctx2.textBaseline = 'middle';
+      ctx2.fillText(p.cue, cx, 60);
+      const colors: Record<string, string> = { red: '#ff4d4d', blue: '#4d8cff' };
+      ctx2.fillStyle = colors[p.color] ?? '#fff';
+      const sz = 60;
+      if (p.shape === 'circle') {
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, sz / 2, 0, Math.PI * 2);
+        ctx2.fill();
+      } else {
+        ctx2.fillRect(cx - sz / 2, cy - sz / 2, sz, sz);
+      }
+    }, 800);
   }
 
   if (trial.stimulus.kind === 'simple-rt') {

@@ -26,8 +26,11 @@ interface TransferRow {
   task_id: string;
   score: number;
 }
+interface MetacogStats {
+  meanBrier: number | null;
+  totalPredictions: number;
+}
 
-// Task display metadata. `lowerIsBetter` for RT tasks; higher-is-better for accuracy tasks.
 const TRANSFER_TASK_META: Record<string, { label: string; lowerIsBetter: boolean; unit: string }> = {
   'matrix-reasoning': { label: 'Matrix Reasoning', lowerIsBetter: false, unit: '% correct' },
   'simple-rt': { label: 'Simple Reaction Time', lowerIsBetter: true, unit: 'ms' }
@@ -52,28 +55,45 @@ async function loadSummary() {
   const transfer = await dbQuery<TransferRow>(
     'SELECT ts, task_id, score FROM transfer_assessments ORDER BY ts ASC'
   );
-  return { sessions, domainState, perSession, transfer };
+  const metacog = await dbQuery<{ brier: number }>(
+    'SELECT brier_contribution as brier FROM metacog_predictions WHERE brier_contribution IS NOT NULL'
+  );
+
+  const meanBrier = metacog.length > 0 
+    ? metacog.reduce((acc, curr) => acc + curr.brier, 0) / metacog.length 
+    : null;
+
+  return { 
+    sessions, 
+    domainState, 
+    perSession, 
+    transfer,
+    metacog: { meanBrier, totalPredictions: metacog.length } as MetacogStats
+  };
 }
 
-function Sparkline(props: { values: number[]; width?: number; height?: number }) {
+function Sparkline(props: { values: number[]; width?: number; height?: number; color?: string }) {
   const w = () => props.width ?? 140;
   const h = () => props.height ?? 28;
+  const color = () => props.color ?? '#7aa2ff';
   const path = () => {
     const vs = props.values;
     if (vs.length === 0) return '';
     if (vs.length === 1) return `M 0 ${h() / 2} L ${w()} ${h() / 2}`;
     const step = w() / (vs.length - 1);
+    const min = Math.min(...vs);
+    const max = Math.max(...vs);
+    const range = max - min || 1;
+    
     return vs.map((v, i) => {
       const x = i * step;
-      const y = h() - v * h();  // accuracy 0..1 → bottom..top
+      const y = h() - ((v - min) / range) * h() * 0.8 - (h() * 0.1);
       return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }).join(' ');
   };
   return (
-    <svg width={w()} height={h()} style="vertical-align:middle">
-      <line x1="0" y1={h() - 0.75 * h()} x2={w()} y2={h() - 0.75 * h()}
-        stroke="#2a2f38" stroke-dasharray="2,2" />
-      <path d={path()} stroke="#7aa2ff" stroke-width="2" fill="none" />
+    <svg width={w()} height={h()} style="display: block">
+      <path d={path()} stroke={color()} stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
   );
 }
@@ -81,12 +101,10 @@ function Sparkline(props: { values: number[]; width?: number; height?: number })
 export function Dashboard() {
   const [data] = createResource(loadSummary);
 
-  // Build per-domain session-accuracy series (oldest → newest)
   const seriesByDomain = () => {
     const d = data();
     if (!d) return new Map<string, number[]>();
     const map = new Map<string, number[]>();
-    // perSession is sorted DESC; reverse to get chronological order
     const chronological = [...d.perSession].reverse();
     for (const row of chronological) {
       const arr = map.get(row.module_id) ?? [];
@@ -97,126 +115,149 @@ export function Dashboard() {
   };
 
   return (
-    <div class="container" style="max-width:720px">
-      <h1 class="hero">Dashboard</h1>
-      <h3>Domains</h3>
-      <Show when={(data()?.domainState?.length ?? 0) > 0}
-        fallback={<p class="muted">No completed sessions yet. <A href="/">Start one</A>.</p>}>
-        <table style="width:100%;border-collapse:collapse;font-size:.9rem">
-          <thead>
-            <tr style="border-bottom:1px solid #2a2f38;text-align:left">
-              <th style="padding:.4rem">Domain</th>
-              <th style="padding:.4rem">Sessions</th>
-              <th style="padding:.4rem">Last</th>
-              <th style="padding:.4rem">EWMA</th>
-              <th style="padding:.4rem">Recent accuracy</th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={data()!.domainState}>{d => {
-              const series = seriesByDomain().get(d.module_id) ?? [];
-              return (
-                <tr style="border-bottom:1px solid #1a1e24">
-                  <td style="padding:.4rem">{d.module_id}</td>
-                  <td style="padding:.4rem">{d.sessions_total}</td>
-                  <td style="padding:.4rem">{d.last_session_ts
-                    ? new Date(d.last_session_ts).toLocaleDateString()
-                    : '—'}</td>
-                  <td style="padding:.4rem">{d.ewma_performance?.toFixed(2) ?? '—'}</td>
-                  <td style="padding:.4rem"><Sparkline values={series} /></td>
-                </tr>
-              );
-            }}</For>
-          </tbody>
-        </table>
-      </Show>
+    <div class="container" style="max-width: 900px">
+      <header style="margin-bottom: 3rem">
+        <div class="flex-between">
+          <h1 class="hero" style="margin: 0">Analytics Dashboard</h1>
+          <A href="/" class="muted" style="text-decoration: underline">← Back to Terminal</A>
+        </div>
+        <p class="muted">Longitudinal cognitive performance tracking.</p>
+      </header>
 
-      <h3 style="margin-top:2rem">Transfer assessment</h3>
-      <Show when={(data()?.transfer?.length ?? 0) > 0}
-        fallback={<p class="muted">No baseline yet. <A href="/">Run baseline</A> to enable transfer tracking.</p>}>
-        <For each={Object.keys(TRANSFER_TASK_META)}>
-          {taskId => {
-            const meta = TRANSFER_TASK_META[taskId]!;
-            const runs = () => (data()?.transfer ?? []).filter(r => r.task_id === taskId);
-            const baseline = () => runs()[0]?.score ?? null;
-            const latest = () => {
-              const rs = runs();
-              return rs.length > 0 ? rs[rs.length - 1]!.score : null;
-            };
-            const delta = () => {
-              const b = baseline(); const l = latest();
-              if (b === null || l === null || runs().length < 2) return null;
-              const raw = l - b;
-              const improved = meta.lowerIsBetter ? raw < 0 : raw > 0;
-              const pct = meta.lowerIsBetter
-                ? ((b - l) / b) * 100   // RT: shrink = improvement
-                : ((l - b) / Math.max(b, 0.01)) * 100;  // accuracy: grow = improvement
-              return { improved, pct, raw };
-            };
-            const fmt = (v: number) =>
-              meta.lowerIsBetter ? `${Math.round(v)} ms` : `${(v * 100).toFixed(0)}%`;
-
-            return (
-              <div style="margin-bottom:1rem">
-                <p style="margin:.4rem 0;font-size:.95rem">
-                  <b>{meta.label}</b>
-                  <span class="muted" style="margin-left:.5rem">{runs().length} run{runs().length === 1 ? '' : 's'}</span>
-                </p>
-                <Show when={runs().length > 0}>
-                  <p class="muted" style="font-size:.85rem;margin:.2rem 0">
-                    Baseline: <b>{fmt(baseline()!)}</b>
-                    {' · Latest: '}<b>{fmt(latest()!)}</b>
-                    <Show when={delta()}>
-                      {d => (
-                        <span style={`color:${d().improved ? '#4dff99' : '#ff8a8a'};margin-left:.5rem`}>
-                          {d().improved ? '▲' : '▼'} {Math.abs(d().pct).toFixed(0)}%
-                          {d().improved ? ' improved' : ' declined'}
-                        </span>
-                      )}
-                    </Show>
-                  </p>
-                </Show>
-                <Show when={runs().length >= 2}>
-                  <Sparkline
-                    values={meta.lowerIsBetter
-                      ? runs().map(r => {
-                          // Invert so the sparkline goes UP for improvement.
-                          // Normalize against the worst run to fit in 0-1 range.
-                          const vals = runs().map(x => x.score);
-                          const worst = Math.max(...vals);
-                          return worst === 0 ? 0.5 : 1 - (r.score / worst);
-                        })
-                      : runs().map(r => r.score)}
-                    width={300}
-                    height={32}
-                  />
-                </Show>
+      <div class="card-grid" style="margin-bottom: 2rem">
+        <div class="panel">
+          <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem">Metacognitive Calibration</div>
+          <div class="flex-between" style="align-items: flex-end">
+            <div>
+              <div class="mono" style="font-size: 1.5rem; color: var(--accent)">
+                {data()?.metacog.meanBrier?.toFixed(3) ?? '0.000'}
               </div>
-            );
-          }}
-        </For>
-      </Show>
+              <div class="muted" style="font-size: 0.7rem">Mean Brier Score (lower is better)</div>
+            </div>
+            <div class="mono" style="font-size: 0.8rem">{data()?.metacog.totalPredictions ?? 0} samples</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem">Current Training Phase</div>
+          <div class="mono" style="font-size: 1.5rem">
+            {data()?.sessions[0]?.phase ?? 'ramp'}
+          </div>
+          <div class="muted" style="font-size: 0.7rem">Based on latest {data()?.sessions.length ?? 0} sessions</div>
+        </div>
+      </div>
 
-      <h3 style="margin-top:2rem">Recent sessions</h3>
-      <Show when={(data()?.sessions?.length ?? 0) > 0}
-        fallback={<p class="muted">(none)</p>}>
-        <ul style="list-style:none;padding:0">
-          <For each={data()!.sessions}>{s => (
-            <li style="padding:.3rem 0;border-bottom:1px solid #1a1e24">
-              <A href={`/results/${s.id}`} style="color:var(--accent)">
-                {new Date(s.start_ts).toLocaleString()}
-              </A>
-              <span class="muted"> — {s.phase}
-                {s.end_ts && ` — ${Math.round((s.end_ts - s.start_ts) / 1000)}s`}
-              </span>
-            </li>
-          )}</For>
-        </ul>
-      </Show>
+      <section class="panel">
+        <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem">Cognitive Domain Efficiency</h3>
+        <Show when={(data()?.domainState?.length ?? 0) > 0}
+          fallback={<p class="muted">Insufficient data. Complete more sessions to generate trends.</p>}>
+          <table>
+            <thead>
+              <tr>
+                <th>Domain</th>
+                <th>Sessions</th>
+                <th>Performance (EWMA)</th>
+                <th>Trend (Accuracy)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={data()!.domainState}>{d => {
+                const series = seriesByDomain().get(d.module_id) ?? [];
+                return (
+                  <tr>
+                    <td class="mono" style="color: var(--accent)">{d.module_id}</td>
+                    <td class="mono">{d.sessions_total}</td>
+                    <td class="mono">{d.ewma_performance?.toFixed(3) ?? '—'}</td>
+                    <td><Sparkline values={series} width={180} /></td>
+                  </tr>
+                );
+              }}</For>
+            </tbody>
+          </table>
+        </Show>
+      </section>
 
-      <p style="margin-top:2rem" class="muted">
-        <A href="/">← Home</A>
-      </p>
+      <div class="card-grid" style="margin-top: 2rem">
+        <section class="panel" style="grid-column: span 2">
+          <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem">Transfer Assessments</h3>
+          <Show when={(data()?.transfer?.length ?? 0) > 0}
+            fallback={<p class="muted">No transfer assessments recorded yet.</p>}>
+            <div style="display: grid; gap: 2rem">
+              <For each={Object.keys(TRANSFER_TASK_META)}>
+                {taskId => {
+                  const meta = TRANSFER_TASK_META[taskId]!;
+                  const runs = () => (data()?.transfer ?? []).filter(r => r.task_id === taskId);
+                  const baseline = () => runs()[0]?.score ?? null;
+                  const latest = () => {
+                    const rs = runs();
+                    return rs.length > 0 ? rs[rs.length - 1]!.score : null;
+                  };
+                  const delta = () => {
+                    const b = baseline(); const l = latest();
+                    if (b === null || l === null || runs().length < 2) return null;
+                    const raw = l - b;
+                    const improved = meta.lowerIsBetter ? raw < 0 : raw > 0;
+                    const pct = meta.lowerIsBetter
+                      ? ((b - l) / b) * 100
+                      : ((l - b) / Math.max(b, 0.01)) * 100;
+                    return { improved, pct };
+                  };
+                  const fmt = (v: number) =>
+                    meta.lowerIsBetter ? `${Math.round(v)}ms` : `${(v * 100).toFixed(1)}%`;
+
+                  return (
+                    <div style="padding-bottom: 1rem; border-bottom: 1px solid var(--panel-border)">
+                      <div class="flex-between" style="margin-bottom: 0.5rem">
+                        <div class="mono" style="font-size: 0.9rem">{meta.label}</div>
+                        <Show when={delta()}>
+                          {d => (
+                            <div class="mono" style={`font-size: 0.8rem; color:${d().improved ? '#4dff99' : '#ff8a8a'}`}>
+                              {d().improved ? '▲' : '▼'} {Math.abs(d().pct).toFixed(1)}%
+                            </div>
+                          )}
+                        </Show>
+                      </div>
+                      <div class="flex-between">
+                        <div>
+                          <div class="muted" style="font-size: 0.7rem">BASELINE</div>
+                          <div class="mono" style="font-size: 1.1rem">{baseline() !== null ? fmt(baseline()!) : '—'}</div>
+                        </div>
+                        <div style="flex: 1; margin: 0 2rem">
+                          <Sparkline 
+                            values={runs().map(r => r.score)} 
+                            width={200} 
+                            height={30} 
+                            color={delta()?.improved ? '#4dff99' : '#7aa2ff'} 
+                          />
+                        </div>
+                        <div style="text-align: right">
+                          <div class="muted" style="font-size: 0.7rem">LATEST</div>
+                          <div class="mono" style="font-size: 1.1rem">{latest() !== null ? fmt(latest()!) : '—'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+        </section>
+
+        <section class="panel">
+          <h3 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem">Recent Session Log</h3>
+          <Show when={(data()?.sessions?.length ?? 0) > 0} fallback={<p class="muted">No sessions.</p>}>
+            <div style="display: grid; gap: 0.75rem">
+              <For each={data()!.sessions}>{s => (
+                <div class="flex-between" style="font-size: 0.85rem">
+                  <A href={`/results/${s.id}`} style="color:var(--accent)" class="mono">
+                    {new Date(s.start_ts).toLocaleDateString()}
+                  </A>
+                  <span class="muted mono" style="font-size: 0.75rem">{s.phase}</span>
+                </div>
+              )}</For>
+            </div>
+          </Show>
+        </section>
+      </div>
     </div>
   );
 }

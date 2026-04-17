@@ -88,5 +88,5 @@ export function nextNLevel(i: NLevelInput): number {
       recent.every(b => streamAcc(b.position.counts) < demoteAcc || streamAcc(b.audio.counts) < demoteAcc)) {
     return Math.max(i.currentN - 1, minN);
   }
-  return i.currentN;
+  return Math.max(minN, Math.min(maxN, i.currentN));
 }

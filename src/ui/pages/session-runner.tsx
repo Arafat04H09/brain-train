@@ -2,7 +2,7 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { useParams, useNavigate } from '@solidjs/router';
 import { getModule } from '~/core/modules/registry';
 import { dbQuery } from '~/core/storage/db-client';
-import { getDomainState, saveBlock, saveTrial, completeSession, upsertDomainState, saveMetacogPrediction } from '~/core/storage/repos';
+import { getDomainState, saveBlock, saveTrial, completeSession, completeBlock, upsertDomainState, saveMetacogPrediction } from '~/core/storage/repos';
 import { runTrial } from '~/core/stimulus/engine-client';
 import { NBackGrid } from '~/ui/components/nback-grid';
 import { UfovStimulus } from '~/ui/components/ufov-stimulus';
@@ -11,7 +11,24 @@ import { MatrixStimulus } from '~/ui/components/matrix-stimulus';
 import { CalibrationStimulus } from '~/ui/components/calibration-stimulus';
 import { ComplexSpan } from '~/ui/components/complex-span';
 import { MetacogPrompt } from '~/ui/components/metacog-prompt';
+import { BlockInstructions } from '~/ui/components/block-instructions';
 import type { Session, Trial, Response, ModuleId } from '~/types/module';
+
+function GenericStimulus(props: { trial: Trial; onDone: (r: Response) => void }) {
+  let canvasRef: HTMLCanvasElement | undefined;
+  onMount(async () => {
+    if (!canvasRef) return;
+    const offscreen = canvasRef.transferControlToOffscreen();
+    const resp = await runTrial(props.trial, offscreen);
+    props.onDone(resp);
+  });
+  return (
+    <div>
+      <canvas ref={canvasRef} width={800} height={600}
+        style="background:#14181e;border-radius:.5rem;display:block;margin:0 auto" />
+    </div>
+  );
+}
 
 export function SessionRunner() {
   const params = useParams();
@@ -22,11 +39,19 @@ export function SessionRunner() {
   const [pendingPrompt, setPendingPrompt] = createSignal<{ blockKind: string;
     resolve: (pct: number) => void } | null>(null);
   const [aborted, setAborted] = createSignal(false);
+  const [pendingInstructions, setPendingInstructions] = createSignal<{ blockKind: string;
+    resolve: () => void } | null>(null);
   let canvasResolver: ((r: Response) => void) | null = null;
 
   function promptMetacog(blockKind: string): Promise<number> {
     return new Promise((resolve) => {
       setPendingPrompt({ blockKind, resolve });
+    });
+  }
+
+  function showInstructions(blockKind: string): Promise<void> {
+    return new Promise((resolve) => {
+      setPendingInstructions({ blockKind, resolve });
     });
   }
 
@@ -62,6 +87,24 @@ export function SessionRunner() {
     runSessionLoop(s, blockIds);
   });
 
+  async function finalizeBlock(s: Session, blockIds: string[], blockIndex: number) {
+    const blockId = blockIds[blockIndex];
+    if (!blockId) return;
+    const stats = s.currentBlockStats();
+    await completeBlock(blockId, stats.accuracy);
+    const predRow = await dbQuery<{ predicted_accuracy: number }>(
+      'SELECT predicted_accuracy FROM metacog_predictions WHERE block_id = ?', [blockId]
+    );
+    if (predRow.length > 0) {
+      const pred = predRow[0]!.predicted_accuracy / 100;
+      const brier = (pred - stats.accuracy) ** 2;
+      await saveMetacogPrediction({
+        blockId, predictedAccuracy: predRow[0]!.predicted_accuracy,
+        actualAccuracy: stats.accuracy, brierContribution: brier
+      });
+    }
+  }
+
   async function runSessionLoop(s: Session, blockIds: string[]) {
     let trial = s.nextTrial();
     let lastBlockIndex = -1;
@@ -72,6 +115,7 @@ export function SessionRunner() {
         break;
       }
       if (trial.blockIndex !== lastBlockIndex) {
+        if (lastBlockIndex >= 0) await finalizeBlock(s, blockIds, lastBlockIndex);
         lastBlockIndex = trial.blockIndex;
         const blockKind = s.blocks[trial.blockIndex]?.kind ?? 'block';
         const pred = await promptMetacog(blockKind);
@@ -80,10 +124,11 @@ export function SessionRunner() {
           blockId,
           predictedAccuracy: pred
         });
+        await showInstructions(blockKind);
       }
       setCurrent(trial);
       const resp = await new Promise<Response>((resolve) => {
-        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral' || trial!.stimulus.kind === 'flanker-compound' || trial!.stimulus.kind === 'matrix-3x3' || trial!.stimulus.kind === 'calibration-mcq') {
+        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral' || trial!.stimulus.kind === 'flanker-compound' || trial!.stimulus.kind === 'matrix-3x3' || trial!.stimulus.kind === 'calibration-mcq' || trial!.stimulus.kind === 'simple-rt' || trial!.stimulus.kind === 'ef-flanker-arrows' || trial!.stimulus.kind === 'ef-stop-signal-arrow' || trial!.stimulus.kind === 'ef-task-switch') {
           canvasResolver = resolve;
         } else if (trial!.stimulus.kind === 'complex-span') {
           canvasResolver = resolve;
@@ -92,18 +137,23 @@ export function SessionRunner() {
         }
       });
       canvasResolver = null;
-      const result = await s.submit(resp);
-      await saveTrial({
-        id: `${blockId}:${trial.id}`, blockId, trialIndex: trial.trialIndex,
-        stimulus: trial.stimulus, response: resp,
-        correct: result.correct, rtMs: result.rtMs ?? 0,
-        requestedDurationMs: resp.timing.requestedDurationMs,
-        achievedDurationMs: resp.timing.achievedDurationMs,
-        framesRendered: resp.timing.framesRendered,
-        timingFlag: resp.timing.timingFlag
-      });
+      try {
+        const result = await s.submit(resp);
+        await saveTrial({
+          id: `${blockId}:${trial.id}`, blockId, trialIndex: trial.trialIndex,
+          stimulus: trial.stimulus, response: resp,
+          correct: result.correct, rtMs: result.rtMs ?? 0,
+          requestedDurationMs: resp.timing.requestedDurationMs,
+          achievedDurationMs: resp.timing.achievedDurationMs,
+          framesRendered: resp.timing.framesRendered,
+          timingFlag: resp.timing.timingFlag
+        });
+      } catch (e) {
+        console.error('Trial submit error, skipping trial:', e);
+      }
       trial = s.nextTrial();
     }
+    if (lastBlockIndex >= 0) await finalizeBlock(s, blockIds, lastBlockIndex);
     setCurrent(null);
     if (aborted()) {
       await completeSession(params.sessionId!);
@@ -121,14 +171,14 @@ export function SessionRunner() {
   function onTrialDone(r: Response) {
     if (canvasResolver) canvasResolver(r);
   }
-
-  const activeCanvas = () => {
-    const t = current();
-    if (pendingPrompt() || !t) return null;
-    const k = t.stimulus.kind;
-    if (k === 'nback-grid' || k === 'ufov-peripheral' || k === 'flanker-compound' || k === 'matrix-3x3' || k === 'calibration-mcq' || k === 'complex-span') return t;
-    return null;
-  };
+const activeCanvas = () => {
+  if (aborted()) return null;
+  const t = current();
+  if (pendingPrompt() || !t) return null;
+  const k = t.stimulus.kind;
+  if (k === 'nback-grid' || k === 'ufov-peripheral' || k === 'flanker-compound' || k === 'matrix-3x3' || k === 'calibration-mcq' || k === 'complex-span' || k === 'simple-rt' || k === 'ef-flanker-arrows' || k === 'ef-stop-signal-arrow' || k === 'ef-task-switch') return t;
+  return null;
+};
 
   const blockProgress = () => {
     const s = session();
@@ -184,14 +234,22 @@ export function SessionRunner() {
         {p => <MetacogPrompt blockKind={p().blockKind}
           onSubmit={(pct) => { const cb = p().resolve; setPendingPrompt(null); cb(pct); }} />}
       </Show>
+      <Show when={pendingInstructions()}>
+        {inst => <BlockInstructions blockKind={inst().blockKind}
+          onReady={() => { const cb = inst().resolve; setPendingInstructions(null); cb(); }} />}
+      </Show>
       <Show when={activeCanvas()} keyed>
         {trial => {
           if (trial.stimulus.kind === 'nback-grid') return <NBackGrid trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'ufov-peripheral') return <UfovStimulus trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'flanker-compound') return <EfStimulus trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'ef-flanker-arrows') return <EfStimulus trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'ef-stop-signal-arrow') return <EfStimulus trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'ef-task-switch') return <EfStimulus trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'matrix-3x3') return <MatrixStimulus trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'calibration-mcq') return <CalibrationStimulus trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'complex-span') return <ComplexSpan trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'simple-rt') return <GenericStimulus trial={trial} onDone={onTrialDone} />;
           return null;
         }}
       </Show>

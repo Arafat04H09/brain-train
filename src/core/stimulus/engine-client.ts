@@ -21,10 +21,23 @@ function ensureWorker(): Worker {
       if (resolver) { pending.delete(id); resolver(rest); }
     };
     window.addEventListener('keydown', (e) => {
-      worker!.postMessage({ id: 0, kind: 'key-event', key: e.key, ts: performance.now() });
+      // Only forward keys if a trial is actively running/pending to avoid spamming the worker 
+      // when the user is typing in standard UI inputs (like Complex Span recall).
+      if (pending.size > 0) {
+        if ([' ', 'Spacebar', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+          e.preventDefault();
+        }
+        const mappedKey = e.key === ' ' || e.key === 'Spacebar' ? 'Space' : e.key;
+        worker!.postMessage({ id: 0, kind: 'key-event', key: mappedKey, ts: performance.now() });
+      }
     });
   }
   return worker;
+}
+
+export function sendSyntheticKey(key: string) {
+  const w = ensureWorker();
+  w.postMessage({ id: 0, kind: 'key-event', key, ts: performance.now() });
 }
 
 export async function runTrial(trial: Trial, canvas?: OffscreenCanvas): Promise<Response> {

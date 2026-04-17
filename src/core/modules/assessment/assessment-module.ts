@@ -67,7 +67,7 @@ export const assessmentModule: TrainingModule = {
             },
             metadata: { correctIdx: answerIdx },
             inputSpec: { accept: ['keyboard'], keys: ['1', '2', '3', '4', '5', '6', '7', '8'], timeoutMs: 60000 },
-            timingSpec: { stimulusMs: 60000 }
+            timingSpec: { stimulusMs: 'until-response' }
           };
 
           puzzles[id] = { answerIdx };
