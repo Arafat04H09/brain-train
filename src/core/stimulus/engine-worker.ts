@@ -29,7 +29,7 @@ self.onmessage = (ev: MessageEvent<Req & { id: number }>) => {
     runTrial(req.trial).then(response => reply({ kind: 'trial-complete', response }))
       .catch(e => reply({ kind: 'error', message: e.message }));
   } else if (req.kind === 'key-event' && pending) {
-    const rtMs = req.ts - pending.startTs;
+    const rtMs = performance.now() - pending.startTs;
     pending.keys.push({ key: req.key, rtMs });
   }
 };

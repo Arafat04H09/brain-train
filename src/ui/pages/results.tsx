@@ -225,7 +225,8 @@ export function Results() {
                     <For each={d().blocks}>
                       {b => {
                         const t = d().trialsByBlock.get(b.id);
-                        const acc = t && t.total > 0 ? t.correct / t.total : null;
+                        const isRT = b.kind === 'simple-rt';
+                        const acc = !isRT && t && t.total > 0 ? t.correct / t.total : null;
                         const predicted = b.metacog_prediction;
                         const brierPoint = predicted !== null && acc !== null
                           ? Math.pow(predicted - acc, 2).toFixed(3)
@@ -234,12 +235,14 @@ export function Results() {
                           <tr>
                             <td class="mono muted">{b.block_index + 1}</td>
                             <td class="mono" style="color: var(--accent)">{b.kind}</td>
-                            <td class="mono">{acc !== null ? (acc * 100).toFixed(0) + '%' : '—'}</td>
+                            <td class="mono">{isRT
+                              ? (t?.avg_rt ? `${Math.round(t.avg_rt)}ms` : '—')
+                              : (acc !== null ? (acc * 100).toFixed(0) + '%' : '—')}</td>
                             <td class="mono">
-                              {predicted !== null ? `${(predicted * 100).toFixed(0)}%` : '—'}
-                              <span class="muted" style="font-size: 0.75rem; margin-left: 0.5rem">({brierPoint})</span>
+                              {!isRT && predicted !== null ? `${(predicted * 100).toFixed(0)}%` : '—'}
+                              <span class="muted" style="font-size: 0.75rem; margin-left: 0.5rem">({!isRT ? brierPoint : '—'})</span>
                             </td>
-                            <td class="mono">{t?.avg_rt ? `${Math.round(t.avg_rt)}ms` : '—'}</td>
+                            <td class="mono">{!isRT && t?.avg_rt ? `${Math.round(t.avg_rt)}ms` : '—'}</td>
                           </tr>
                         );
                       }}
