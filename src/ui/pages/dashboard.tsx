@@ -1,6 +1,68 @@
-import { createResource, For, Show } from 'solid-js';
+import { createResource, createSignal, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
 import { dbInit, dbQuery } from '~/core/storage/db-client';
+
+async function exportAllData() {
+  await dbInit();
+  const [sessions, blocks, trials, domainState, metacog, transfer, calibrationReviews] =
+    await Promise.all([
+      dbQuery<Record<string, unknown>>('SELECT * FROM sessions ORDER BY start_ts'),
+      dbQuery<Record<string, unknown>>('SELECT * FROM blocks ORDER BY session_id, block_index'),
+      dbQuery<Record<string, unknown>>('SELECT * FROM trials ORDER BY block_id, trial_index'),
+      dbQuery<Record<string, unknown>>('SELECT * FROM domain_state'),
+      dbQuery<Record<string, unknown>>('SELECT * FROM metacog_predictions'),
+      dbQuery<Record<string, unknown>>('SELECT * FROM transfer_assessments ORDER BY ts'),
+      dbQuery<Record<string, unknown>>('SELECT * FROM calibration_reviews ORDER BY ts'),
+    ]);
+
+  return {
+    exportedAt: new Date().toISOString(),
+    version: 1,
+    sessions,
+    blocks,
+    trials: trials.map(t => ({
+      ...t,
+      stimulus: typeof t.stimulus_json === 'string' ? JSON.parse(t.stimulus_json as string) : t.stimulus_json,
+      response: typeof t.response_json === 'string' ? JSON.parse(t.response_json as string) : t.response_json,
+    })),
+    domainState,
+    metacogPredictions: metacog,
+    transferAssessments: transfer,
+    calibrationReviews,
+  };
+}
+
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadCsv(rows: Record<string, unknown>[], filename: string) {
+  if (rows.length === 0) return;
+  const keys = Object.keys(rows[0]!);
+  const lines = [keys.join(',')];
+  for (const row of rows) {
+    lines.push(keys.map(k => {
+      const v = row[k];
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    }).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface DomainRow {
   module_id: string;
@@ -100,6 +162,26 @@ function Sparkline(props: { values: number[]; width?: number; height?: number; c
 
 export function Dashboard() {
   const [data] = createResource(loadSummary);
+  const [exporting, setExporting] = createSignal(false);
+
+  async function handleExportJson() {
+    setExporting(true);
+    try {
+      const d = await exportAllData();
+      const ts = new Date().toISOString().slice(0, 10);
+      downloadJson(d, `intellect-forge-${ts}.json`);
+    } finally { setExporting(false); }
+  }
+
+  async function handleExportCsv() {
+    setExporting(true);
+    try {
+      await dbInit();
+      const trials = await dbQuery<Record<string, unknown>>('SELECT * FROM trials ORDER BY block_id, trial_index');
+      const ts = new Date().toISOString().slice(0, 10);
+      downloadCsv(trials, `intellect-forge-trials-${ts}.csv`);
+    } finally { setExporting(false); }
+  }
 
   const seriesByDomain = () => {
     const d = data();
@@ -119,9 +201,19 @@ export function Dashboard() {
       <header style="margin-bottom: 3rem">
         <div class="flex-between">
           <h1 class="hero" style="margin: 0">Analytics Dashboard</h1>
-          <A href="/" class="muted" style="text-decoration: underline">← Back to Terminal</A>
+          <A href="/" class="muted" style="text-decoration: underline">&larr; Back to Terminal</A>
         </div>
-        <p class="muted">Longitudinal cognitive performance tracking.</p>
+        <div class="flex-between" style="margin-top: 0.5rem">
+          <p class="muted" style="margin: 0">Longitudinal cognitive performance tracking.</p>
+          <div style="display: flex; gap: 0.5rem">
+            <button style="font-size:.75rem;padding:.3rem .7rem" onClick={handleExportJson} disabled={exporting()}>
+              {exporting() ? 'Exporting\u2026' : 'Export JSON'}
+            </button>
+            <button style="font-size:.75rem;padding:.3rem .7rem" onClick={handleExportCsv} disabled={exporting()}>
+              Export Trials CSV
+            </button>
+          </div>
+        </div>
       </header>
 
       <div class="card-grid" style="margin-bottom: 2rem">
