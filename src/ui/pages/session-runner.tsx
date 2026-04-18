@@ -12,6 +12,7 @@ import { CalibrationStimulus } from '~/ui/components/calibration-stimulus';
 import { ComplexSpan } from '~/ui/components/complex-span';
 import { MetacogPrompt } from '~/ui/components/metacog-prompt';
 import { BlockInstructions } from '~/ui/components/block-instructions';
+import { ewmaUpdate, cusumUpdate, cusumInit, type CusumState } from '~/core/adaptive/cusum';
 import type { Session, Trial, Response, ModuleId } from '~/types/module';
 
 function GenericStimulus(props: { trial: Trial; onDone: (r: Response) => void }) {
@@ -84,7 +85,7 @@ export function SessionRunner() {
       });
     }
     setStatus('running');
-    runSessionLoop(s, blockIds);
+    runSessionLoop(s, blockIds, state);
   });
 
   async function finalizeBlock(s: Session, blockIds: string[], blockIndex: number) {
@@ -105,7 +106,7 @@ export function SessionRunner() {
     }
   }
 
-  async function runSessionLoop(s: Session, blockIds: string[]) {
+  async function runSessionLoop(s: Session, blockIds: string[], state: import('~/types/domain').DomainState) {
     let trial = s.nextTrial();
     let lastBlockIndex = -1;
     while (trial && !aborted()) {
@@ -162,6 +163,22 @@ export function SessionRunner() {
       return;
     }
     const result = s.complete();
+
+    // Compute EWMA from block accuracies
+    const blockAccuracies = result.blocks.filter(b => b.accuracy > 0).map(b => b.accuracy);
+    if (blockAccuracies.length > 0) {
+      const meanAcc = blockAccuracies.reduce((a, b) => a + b, 0) / blockAccuracies.length;
+      result.nextDomainState.ewmaPerformance = ewmaUpdate(state.ewmaPerformance, meanAcc);
+    }
+
+    // CUSUM update
+    const cusumPrev: CusumState = (state.level as any)?._cusum ?? cusumInit(0.75);
+    if (blockAccuracies.length > 0) {
+      const meanAcc = blockAccuracies.reduce((a, b) => a + b, 0) / blockAccuracies.length;
+      const cusumNext = cusumUpdate(cusumPrev, meanAcc);
+      result.nextDomainState.level = { ...result.nextDomainState.level, _cusum: cusumNext };
+    }
+
     await completeSession(params.sessionId!);
     await upsertDomainState(result.nextDomainState);
     setStatus('done');

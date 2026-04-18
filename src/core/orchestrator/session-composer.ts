@@ -15,7 +15,7 @@ export function composeSession(input: ComposeInput): SessionPlan {
       score: urgencyScore({
         daysSinceLast: s.lastSessionTs ? (now - s.lastSessionTs) / 86400000 : Infinity,
         plateauFlag: s.plateauFlag,
-        decayFlag: false
+        decayFlag: !!((s.level as any)?._cusum?.alarm)
       })
     }))
     .sort((a, b) => b.score - a.score);
