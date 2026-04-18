@@ -1,7 +1,7 @@
 import { createResource, For, Show } from 'solid-js';
 import { A, useNavigate } from '@solidjs/router';
 import { dbInit, dbQuery } from '~/core/storage/db-client';
-import { saveSession } from '~/core/storage/repos';
+import { saveSession, getDailyTrainingMs } from '~/core/storage/repos';
 import { listModules } from '~/core/modules/registry';
 import type { SessionPlan, Phase } from '~/types/domain';
 import type { ModuleId } from '~/types/module';
@@ -75,6 +75,8 @@ export function Home() {
   const [states] = createResource(loadDomainStates);
   const [assessmentState] = createResource(loadAssessmentState);
   const [overall] = createResource(loadOverallStats);
+  const [dailyMs] = createResource(async () => { await dbInit(); return getDailyTrainingMs(); });
+  const dailyMinutes = () => (dailyMs() ?? 0) / 60000;
 
   async function startSingle(moduleId: ModuleId, minutes: number) {
     await dbInit();
@@ -133,6 +135,9 @@ export function Home() {
             Begin Today's Protocol →
           </button>
         </A>
+        <div class="muted mono" style="font-size: 0.75rem; margin-top: 0.5rem; text-align: center">
+          Today: {Math.round(dailyMinutes())}m / 30m
+        </div>
       </section>
 
       <Show when={assessmentState()}>

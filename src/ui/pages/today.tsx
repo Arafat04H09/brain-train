@@ -1,7 +1,7 @@
 import { createResource, Show, For } from 'solid-js';
 import { A, useNavigate } from '@solidjs/router';
 import { dbInit, dbExec } from '~/core/storage/db-client';
-import { getDomainState, saveSession } from '~/core/storage/repos';
+import { getDomainState, saveSession, getDailyTrainingMs } from '~/core/storage/repos';
 import { computePhase } from '~/core/orchestrator/phases';
 import { composeSession } from '~/core/orchestrator/session-composer';
 import { listModules } from '~/core/modules/registry';
@@ -9,6 +9,11 @@ import type { DomainState } from '~/types/domain';
 
 async function buildPlan() {
   await dbInit();
+  const MAX_DAILY_MS = 30 * 60 * 1000;
+  const usedMs = await getDailyTrainingMs();
+  if (usedMs >= MAX_DAILY_MS) {
+    return null;
+  }
   const oneHourAgo = Date.now() - 3600_000;
   await dbExec('DELETE FROM sessions WHERE completed = 0 AND start_ts < ?', [oneHourAgo]);
   const states: DomainState[] = [];
@@ -42,10 +47,20 @@ export function Today() {
         <p class="muted">Orchestrator has composed your daily cognitive load.</p>
       </header>
 
-      <Show when={plan()} fallback={
-        <div class="panel" style="text-align: center; padding: 3rem">
-          <div class="mono muted">COMPOSING SESSION...</div>
+      <Show when={plan() === null && !plan.loading}>
+        <div class="panel" style="border-left: 4px solid #ff8a8a; text-align: center; padding: 2rem">
+          <div class="mono" style="font-size: 1.1rem; color: #ff8a8a; margin-bottom: 0.5rem">Daily Cap Reached</div>
+          <p class="muted">You've completed 30 minutes of training today. Research shows diminishing returns beyond this threshold. Come back tomorrow.</p>
+          <A href="/" class="muted" style="text-decoration: underline; margin-top: 1rem; display: inline-block">&larr; Back to Terminal</A>
         </div>
+      </Show>
+
+      <Show when={plan()} fallback={
+        <Show when={plan.loading}>
+          <div class="panel" style="text-align: center; padding: 3rem">
+            <div class="mono muted">COMPOSING SESSION...</div>
+          </div>
+        </Show>
       }>
         {p => (
           <div>

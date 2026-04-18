@@ -87,6 +87,17 @@ export async function saveMetacogPrediction(row: {
   );
 }
 
+export async function getDailyTrainingMs(): Promise<number> {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const rows = await dbQuery<{ total: number | null }>(
+    `SELECT SUM(end_ts - start_ts) as total FROM sessions
+     WHERE completed = 1 AND start_ts >= ?`,
+    [startOfDay.getTime()]
+  );
+  return rows[0]?.total ?? 0;
+}
+
 export async function saveTransferAssessment(row: {
   ts: number;
   taskId: string;
