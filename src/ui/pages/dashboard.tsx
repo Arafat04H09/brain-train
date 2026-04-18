@@ -1,5 +1,6 @@
-import { createResource, createSignal, For, Show } from 'solid-js';
+import { createResource, createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
+import * as Plot from '@observablehq/plot';
 import { dbInit, dbQuery } from '~/core/storage/db-client';
 
 async function exportAllData() {
@@ -92,6 +93,11 @@ interface MetacogStats {
   meanBrier: number | null;
   totalPredictions: number;
 }
+interface BrierTrendRow {
+  session_id: string;
+  start_ts: number;
+  brier: number;
+}
 
 const TRANSFER_TASK_META: Record<string, { label: string; lowerIsBetter: boolean; unit: string }> = {
   'matrix-reasoning': { label: 'Matrix Reasoning', lowerIsBetter: false, unit: '% correct' },
@@ -122,44 +128,51 @@ async function loadSummary() {
   const metacog = await dbQuery<{ brier: number }>(
     'SELECT brier_contribution as brier FROM metacog_predictions WHERE brier_contribution IS NOT NULL'
   );
+  const brierTrend = await dbQuery<BrierTrendRow>(
+    `SELECT b.session_id, s.start_ts, AVG(m.brier_contribution) as brier
+     FROM metacog_predictions m
+     JOIN blocks b ON m.block_id = b.id
+     JOIN sessions s ON b.session_id = s.id
+     WHERE m.brier_contribution IS NOT NULL AND s.completed = 1
+     GROUP BY b.session_id
+     ORDER BY s.start_ts`
+  );
 
-  const meanBrier = metacog.length > 0 
-    ? metacog.reduce((acc, curr) => acc + curr.brier, 0) / metacog.length 
+  const meanBrier = metacog.length > 0
+    ? metacog.reduce((acc, curr) => acc + curr.brier, 0) / metacog.length
     : null;
 
-  return { 
-    sessions, 
-    domainState, 
-    perSession, 
+  return {
+    sessions,
+    domainState,
+    perSession,
     transfer,
-    metacog: { meanBrier, totalPredictions: metacog.length } as MetacogStats
+    metacog: { meanBrier, totalPredictions: metacog.length } as MetacogStats,
+    brierTrend
   };
 }
 
-function Sparkline(props: { values: number[]; width?: number; height?: number; color?: string }) {
-  const w = () => props.width ?? 140;
-  const h = () => props.height ?? 28;
-  const color = () => props.color ?? '#7aa2ff';
-  const path = () => {
-    const vs = props.values;
-    if (vs.length === 0) return '';
-    if (vs.length === 1) return `M 0 ${h() / 2} L ${w()} ${h() / 2}`;
-    const step = w() / (vs.length - 1);
-    const min = Math.min(...vs);
-    const max = Math.max(...vs);
-    const range = max - min || 1;
-    
-    return vs.map((v, i) => {
-      const x = i * step;
-      const y = h() - ((v - min) / range) * h() * 0.8 - (h() * 0.1);
-      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(' ');
-  };
-  return (
-    <svg width={w()} height={h()} style="display: block">
-      <path d={path()} stroke={color()} stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
-  );
+function PlotChart(props: { data: Array<{ x: number; y: number }>; width?: number; height?: number; color?: string; yLabel?: string }) {
+  let container!: HTMLDivElement;
+  createEffect(() => {
+    const d = props.data;
+    container.innerHTML = '';
+    if (d.length === 0) return;
+    const plot = Plot.plot({
+      width: props.width ?? 300,
+      height: props.height ?? 120,
+      style: { background: 'transparent', color: '#888', fontSize: '10px' },
+      x: { label: null },
+      y: { label: props.yLabel ?? null, grid: true },
+      marks: [
+        Plot.lineY(d, { x: 'x', y: 'y', stroke: props.color ?? '#7aa2ff', strokeWidth: 1.5 }),
+        Plot.dot(d, { x: 'x', y: 'y', fill: props.color ?? '#7aa2ff', r: 2 })
+      ]
+    });
+    container.appendChild(plot);
+    onCleanup(() => { container.innerHTML = ''; });
+  });
+  return <div ref={container} style="display:inline-block" />;
 }
 
 export function Dashboard() {
@@ -230,6 +243,13 @@ export function Dashboard() {
             </div>
             <div class="mono" style="font-size: 0.8rem">{data()?.metacog.totalPredictions ?? 0} samples</div>
           </div>
+          <PlotChart
+            data={data()?.brierTrend?.map(r => ({ x: r.start_ts, y: r.brier })) ?? []}
+            width={400}
+            height={100}
+            color="#f2c94c"
+            yLabel="Brier"
+          />
         </div>
         <div class="panel">
           <div class="muted" style="font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem">Current Training Phase</div>
@@ -261,7 +281,13 @@ export function Dashboard() {
                     <td class="mono" style="color: var(--accent)">{d.module_id}</td>
                     <td class="mono">{d.sessions_total}</td>
                     <td class="mono">{d.ewma_performance?.toFixed(3) ?? '—'}</td>
-                    <td><Sparkline values={series} width={180} /></td>
+                    <td>
+                      <PlotChart
+                        data={series.map((v, i) => ({ x: i, y: v }))}
+                        width={200}
+                        height={50}
+                      />
+                    </td>
                   </tr>
                 );
               }}</For>
@@ -316,11 +342,12 @@ export function Dashboard() {
                           <div class="mono" style="font-size: 1.1rem">{baseline() !== null ? fmt(baseline()!) : '—'}</div>
                         </div>
                         <div style="flex: 1; margin: 0 2rem">
-                          <Sparkline 
-                            values={runs().map(r => r.score)} 
-                            width={200} 
-                            height={30} 
-                            color={delta()?.improved ? '#4dff99' : '#7aa2ff'} 
+                          <PlotChart
+                            data={runs().map(r => ({ x: r.ts, y: r.score }))}
+                            width={200}
+                            height={40}
+                            color={delta()?.improved ? '#4dff99' : '#7aa2ff'}
+                            yLabel={meta.unit}
                           />
                         </div>
                         <div style="text-align: right">
