@@ -2,9 +2,11 @@ import type { TrainingModule, Session, Trial, Response, TrialResult, BlockStats,
 import type { DomainState } from '~/types/domain';
 import { generateMatrix, type Panel } from '../relational/matrix-generator';
 import { saveTransferAssessment } from '~/core/storage/repos';
+import { generateFlankerTrials, scoreFlanker, type FlankerTrial } from './flanker-task';
 
 const MATRIX_TRIALS = 5;
 const RT_TRIALS = 20;
+const FLANKER_TRIALS = 24;
 
 // Fixed seeds for reproducible matrix items
 const MATRIX_SEEDS = [1, 2, 3, 5, 7];
@@ -16,7 +18,8 @@ export const assessmentModule: TrainingModule = {
   createSession(state: DomainState): Session {
     const blocks: Block[] = [
       { index: 0, kind: 'assessment-matrix', targetTrialCount: MATRIX_TRIALS },
-      { index: 1, kind: 'simple-rt', targetTrialCount: RT_TRIALS }
+      { index: 1, kind: 'simple-rt', targetTrialCount: RT_TRIALS },
+      { index: 2, kind: 'flanker-assessment', targetTrialCount: FLANKER_TRIALS }
     ];
 
     let blockIdx = 0;
@@ -24,6 +27,8 @@ export const assessmentModule: TrainingModule = {
     const puzzles: Record<string, { answerIdx: number }> = {};
     const blockCorrectCounts: Record<number, number> = {};
     const blockRTs: Record<number, number[]> = {};
+    const flankerTrials: FlankerTrial[] = generateFlankerTrials();
+    const flankerRTs: Array<{ congruent: boolean; rt: number }> = [];
     const startTs = Date.now();
 
     const session: Session = {
@@ -37,7 +42,9 @@ export const assessmentModule: TrainingModule = {
           return this.nextTrial();
         }
         if (blockIdx === 1 && trialIdx >= RT_TRIALS) {
-          return null;
+          blockIdx++;
+          trialIdx = 0;
+          return this.nextTrial();
         }
 
         if (blockIdx === 0) {
@@ -93,6 +100,21 @@ export const assessmentModule: TrainingModule = {
 
           trialIdx++;
           return t;
+        } else if (blockIdx === 2) {
+          if (trialIdx >= FLANKER_TRIALS) return null;
+          const ft = flankerTrials[trialIdx]!;
+          const id = `assessment-flanker-${trialIdx}`;
+          const t: Trial = {
+            id,
+            blockIndex: blockIdx,
+            trialIndex: trialIdx,
+            stimulus: { kind: 'flanker-assessment', payload: { direction: ft.direction, congruent: ft.congruent } },
+            metadata: { correctKey: ft.direction === 'left' ? 'ArrowLeft' : 'ArrowRight' },
+            inputSpec: { accept: ['keyboard'], keys: ['ArrowLeft', 'ArrowRight'], timeoutMs: 2000 },
+            timingSpec: { preMs: 500, stimulusMs: 'until-response' }
+          };
+          trialIdx++;
+          return t;
         }
         return null;
       },
@@ -135,12 +157,30 @@ export const assessmentModule: TrainingModule = {
             rtMs: isValid ? rtMs : null,
             scored: isValid ? { validRT: 1 } : { validRT: 0 }
           };
+        } else if (resp.trialId.startsWith('assessment-flanker-')) {
+          const idx = parseInt(resp.trialId.split('-').pop()!);
+          const ft = flankerTrials[idx]!;
+          const correctKey = ft.direction === 'left' ? 'ArrowLeft' : 'ArrowRight';
+          const correct = resp.event.value === correctKey;
+          const rtMs = resp.event.rtMs || 0;
+          if (correct && rtMs >= 100 && rtMs <= 1500) {
+            flankerRTs.push({ congruent: ft.congruent, rt: rtMs });
+          }
+          return { trialId: resp.trialId, correct, rtMs: rtMs || null, scored: { correct: correct ? 1 : 0 } };
         }
         return { trialId: resp.trialId, correct: null, rtMs: null, scored: {} };
       },
       currentBlockStats(): BlockStats {
         if (blockIdx === 0) {
           const correct = blockCorrectCounts[blockIdx] ?? 0;
+          return {
+            blockIndex: blockIdx,
+            trialsCompleted: trialIdx,
+            accuracy: trialIdx > 0 ? correct / trialIdx : 0,
+            custom: {}
+          };
+        } else if (blockIdx === 2) {
+          const correct = flankerRTs.length;
           return {
             blockIndex: blockIdx,
             trialsCompleted: trialIdx,
@@ -169,6 +209,9 @@ export const assessmentModule: TrainingModule = {
           ? validRTs.reduce((a, b) => a + b, 0) / validRTs.length
           : 0;
 
+        // Flanker score
+        const flankerResult = scoreFlanker(flankerRTs);
+
         // Save to transfer_assessments table
         const now = Date.now();
         Promise.all([
@@ -183,6 +226,12 @@ export const assessmentModule: TrainingModule = {
             taskId: 'simple-rt',
             score: rtScore,
             raw: { validRTs: validRTs.length, totalRTs: RT_TRIALS, meanRT: rtScore }
+          }),
+          saveTransferAssessment({
+            ts: now,
+            taskId: 'flanker-inhibition',
+            score: flankerResult.conflictCost,
+            raw: { ...flankerResult, validTrials: flankerRTs.length, totalTrials: FLANKER_TRIALS }
           })
         ]).catch(e => console.error('Failed to save transfer assessment:', e));
 
@@ -199,6 +248,12 @@ export const assessmentModule: TrainingModule = {
               trialsCompleted: RT_TRIALS,
               accuracy: 0,
               custom: { meanRT: rtScore }
+            },
+            {
+              blockIndex: 2,
+              trialsCompleted: FLANKER_TRIALS,
+              accuracy: flankerResult.accuracy,
+              custom: { conflictCost: flankerResult.conflictCost }
             }
           ],
           totalDurationMs: Date.now() - startTs,

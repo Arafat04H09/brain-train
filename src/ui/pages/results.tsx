@@ -113,7 +113,8 @@ async function loadResults(sessionId: string) {
 
 const TRANSFER_TASKS: Array<{ id: string; label: string; lowerIsBetter: boolean; fmt: (v: number) => string }> = [
   { id: 'matrix-reasoning', label: 'Matrix Reasoning', lowerIsBetter: false, fmt: v => `${(v * 100).toFixed(0)}%` },
-  { id: 'simple-rt', label: 'Simple Reaction Time', lowerIsBetter: true, fmt: v => `${Math.round(v)}ms` }
+  { id: 'simple-rt', label: 'Simple Reaction Time', lowerIsBetter: true, fmt: v => `${Math.round(v)}ms` },
+  { id: 'flanker-inhibition', label: 'Flanker (Inhibition)', lowerIsBetter: true, fmt: v => `${Math.round(v)}ms` }
 ];
 
 function TransferSection(props: { history: Record<string, TransferHistRow[]> }) {
@@ -225,7 +226,7 @@ export function Results() {
                     <For each={d().blocks}>
                       {b => {
                         const t = d().trialsByBlock.get(b.id);
-                        const isRT = b.kind === 'simple-rt';
+                        const isRT = b.kind === 'simple-rt' || b.kind === 'flanker-assessment';
                         const acc = !isRT && t && t.total > 0 ? t.correct / t.total : null;
                         const predicted = b.metacog_prediction;
                         const brierPoint = predicted !== null && acc !== null

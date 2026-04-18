@@ -485,6 +485,19 @@ function drawStimulus(trial: Trial) {
     ctx.textBaseline = 'bottom';
     ctx.fillText('Press SPACE as fast as possible', w / 2, cy - 60);
   }
+
+  if (trial.stimulus.kind === 'flanker-assessment') {
+    const p = trial.stimulus.payload as { direction: 'left' | 'right'; congruent: boolean };
+    const cx = w / 2, cy = h / 2;
+    const arrow = p.direction === 'left' ? '<' : '>';
+    const flanker = p.congruent ? arrow : (p.direction === 'left' ? '>' : '<');
+    const display = `${flanker} ${flanker} ${arrow} ${flanker} ${flanker}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 48px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(display, cx, cy);
+  }
 }
 
 // Side-view vehicle silhouette for UFOV central targets.

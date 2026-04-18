@@ -10,7 +10,8 @@ export type StimulusKind =
   | 'calibration-mcq'
   | 'text-question'
   | 'complex-span'
-  | 'simple-rt';
+  | 'simple-rt'
+  | 'flanker-assessment';
 
 export interface StimulusDescriptor {
   kind: StimulusKind;

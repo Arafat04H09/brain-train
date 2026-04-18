@@ -128,7 +128,7 @@ export function SessionRunner() {
       }
       setCurrent(trial);
       const resp = await new Promise<Response>((resolve) => {
-        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral' || trial!.stimulus.kind === 'flanker-compound' || trial!.stimulus.kind === 'matrix-3x3' || trial!.stimulus.kind === 'calibration-mcq' || trial!.stimulus.kind === 'simple-rt' || trial!.stimulus.kind === 'ef-flanker-arrows' || trial!.stimulus.kind === 'ef-stop-signal-arrow' || trial!.stimulus.kind === 'ef-task-switch') {
+        if (trial!.stimulus.kind === 'nback-grid' || trial!.stimulus.kind === 'ufov-peripheral' || trial!.stimulus.kind === 'flanker-compound' || trial!.stimulus.kind === 'matrix-3x3' || trial!.stimulus.kind === 'calibration-mcq' || trial!.stimulus.kind === 'simple-rt' || trial!.stimulus.kind === 'ef-flanker-arrows' || trial!.stimulus.kind === 'ef-stop-signal-arrow' || trial!.stimulus.kind === 'ef-task-switch' || trial!.stimulus.kind === 'flanker-assessment') {
           canvasResolver = resolve;
         } else if (trial!.stimulus.kind === 'complex-span') {
           canvasResolver = resolve;
@@ -176,7 +176,7 @@ const activeCanvas = () => {
   const t = current();
   if (pendingPrompt() || !t) return null;
   const k = t.stimulus.kind;
-  if (k === 'nback-grid' || k === 'ufov-peripheral' || k === 'flanker-compound' || k === 'matrix-3x3' || k === 'calibration-mcq' || k === 'complex-span' || k === 'simple-rt' || k === 'ef-flanker-arrows' || k === 'ef-stop-signal-arrow' || k === 'ef-task-switch') return t;
+  if (k === 'nback-grid' || k === 'ufov-peripheral' || k === 'flanker-compound' || k === 'matrix-3x3' || k === 'calibration-mcq' || k === 'complex-span' || k === 'simple-rt' || k === 'ef-flanker-arrows' || k === 'ef-stop-signal-arrow' || k === 'ef-task-switch' || k === 'flanker-assessment') return t;
   return null;
 };
 
@@ -250,6 +250,7 @@ const activeCanvas = () => {
           if (trial.stimulus.kind === 'calibration-mcq') return <CalibrationStimulus trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'complex-span') return <ComplexSpan trial={trial} onDone={onTrialDone} />;
           if (trial.stimulus.kind === 'simple-rt') return <GenericStimulus trial={trial} onDone={onTrialDone} />;
+          if (trial.stimulus.kind === 'flanker-assessment') return <GenericStimulus trial={trial} onDone={onTrialDone} />;
           return null;
         }}
       </Show>
