@@ -31,6 +31,16 @@ self.onmessage = (ev: MessageEvent<Req & { id: number }>) => {
   } else if (req.kind === 'key-event' && pending) {
     const rtMs = performance.now() - pending.startTs;
     pending.keys.push({ key: req.key, rtMs });
+    if (canvas) {
+      const ctx = canvas.getContext('2d')!;
+      const sz = 12;
+      ctx.fillStyle = 'rgba(77, 255, 153, 0.7)';
+      ctx.fillRect(canvas.width - sz - 8, canvas.height - sz - 8, sz, sz);
+      setTimeout(() => {
+        ctx.fillStyle = '#14181e';
+        ctx.fillRect(canvas.width - sz - 8, canvas.height - sz - 8, sz, sz);
+      }, 80);
+    }
   }
 };
 
