@@ -508,6 +508,33 @@ function drawStimulus(trial: Trial) {
     ctx.textBaseline = 'middle';
     ctx.fillText(display, cx, cy);
   }
+
+  if (trial.stimulus.kind === 'digit-span-present') {
+    const p = trial.stimulus.payload as { digit: number; position: number; total: number };
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 72px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(p.digit), w / 2, h / 2);
+    ctx.fillStyle = '#444';
+    ctx.font = '14px system-ui';
+    ctx.fillText(`${p.position + 1} / ${p.total}`, w / 2, h / 2 + 60);
+  }
+
+  if (trial.stimulus.kind === 'digit-span-probe') {
+    const p = trial.stimulus.payload as { option1: number[]; option2: number[]; correctOption: 1 | 2 };
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Which sequence did you see?', w / 2, h / 2 - 80);
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText(`1:  ${p.option1.join('  ')}`, w / 2, h / 2 - 10);
+    ctx.fillText(`2:  ${p.option2.join('  ')}`, w / 2, h / 2 + 50);
+    ctx.fillStyle = '#888';
+    ctx.font = '14px system-ui';
+    ctx.fillText('Press 1 or 2', w / 2, h / 2 + 110);
+  }
 }
 
 // Side-view vehicle silhouette for UFOV central targets.

@@ -11,7 +11,9 @@ export type StimulusKind =
   | 'text-question'
   | 'complex-span'
   | 'simple-rt'
-  | 'flanker-assessment';
+  | 'flanker-assessment'
+  | 'digit-span-present'
+  | 'digit-span-probe';
 
 export interface StimulusDescriptor {
   kind: StimulusKind;

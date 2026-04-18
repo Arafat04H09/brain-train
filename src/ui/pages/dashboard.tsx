@@ -96,7 +96,8 @@ interface MetacogStats {
 const TRANSFER_TASK_META: Record<string, { label: string; lowerIsBetter: boolean; unit: string }> = {
   'matrix-reasoning': { label: 'Matrix Reasoning', lowerIsBetter: false, unit: '% correct' },
   'simple-rt': { label: 'Simple Reaction Time', lowerIsBetter: true, unit: 'ms' },
-  'flanker-inhibition': { label: 'Flanker (Inhibition)', lowerIsBetter: true, unit: 'ms conflict cost' }
+  'flanker-inhibition': { label: 'Flanker (Inhibition)', lowerIsBetter: true, unit: 'ms conflict cost' },
+  'digit-span': { label: 'Digit Span (STM)', lowerIsBetter: false, unit: 'max span' }
 };
 
 async function loadSummary() {

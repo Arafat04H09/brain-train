@@ -13,12 +13,13 @@ describe('assessmentModule', () => {
     updatedTs: Date.now()
   };
 
-  it('creates a session with 3 blocks', () => {
+  it('creates a session with 4 blocks', () => {
     const session = assessmentModule.createSession(initialState);
-    expect(session.blocks).toHaveLength(3);
+    expect(session.blocks).toHaveLength(4);
     expect(session.blocks[0]!.kind).toBe('assessment-matrix');
     expect(session.blocks[1]!.kind).toBe('simple-rt');
     expect(session.blocks[2]!.kind).toBe('flanker-assessment');
+    expect(session.blocks[3]!.kind).toBe('digit-span');
   });
 
   it('matrix block has 5 trials with matrix-3x3 stimulus', () => {
@@ -159,7 +160,7 @@ describe('assessmentModule', () => {
 
     const result = session.complete();
 
-    expect(result.blocks).toHaveLength(3);
+    expect(result.blocks).toHaveLength(4);
     expect(result.totalDurationMs).toBeGreaterThanOrEqual(0);
     expect(result.nextDomainState).toBeDefined();
     expect(result.nextDomainState.sessionsTotal).toBe(1);

@@ -3,10 +3,12 @@ import type { DomainState } from '~/types/domain';
 import { generateMatrix, type Panel } from '../relational/matrix-generator';
 import { saveTransferAssessment } from '~/core/storage/repos';
 import { generateFlankerTrials, scoreFlanker, type FlankerTrial } from './flanker-task';
+import { generateDigitSequence, generateFoil } from './digit-span-task';
 
 const MATRIX_TRIALS = 5;
 const RT_TRIALS = 20;
 const FLANKER_TRIALS = 24;
+const DIGIT_SPAN_SETS = 14;
 
 // Fixed seeds for reproducible matrix items
 const MATRIX_SEEDS = [1, 2, 3, 5, 7];
@@ -19,7 +21,8 @@ export const assessmentModule: TrainingModule = {
     const blocks: Block[] = [
       { index: 0, kind: 'assessment-matrix', targetTrialCount: MATRIX_TRIALS },
       { index: 1, kind: 'simple-rt', targetTrialCount: RT_TRIALS },
-      { index: 2, kind: 'flanker-assessment', targetTrialCount: FLANKER_TRIALS }
+      { index: 2, kind: 'flanker-assessment', targetTrialCount: FLANKER_TRIALS },
+      { index: 3, kind: 'digit-span', targetTrialCount: DIGIT_SPAN_SETS }
     ];
 
     let blockIdx = 0;
@@ -29,6 +32,15 @@ export const assessmentModule: TrainingModule = {
     const blockRTs: Record<number, number[]> = {};
     const flankerTrials: FlankerTrial[] = generateFlankerTrials();
     const flankerRTs: Array<{ congruent: boolean; rt: number }> = [];
+    let dsSpan = 4;
+    let dsSetIdx = 0;
+    let dsPhase: 'present' | 'probe' = 'present';
+    let dsDigitIdx = 0;
+    let dsCurrentSeq: number[] = [];
+    let dsFoil: number[] = [];
+    let dsCorrectOption: 1 | 2 = 1;
+    let dsMaxSpan = 0;
+    let dsConsecutiveWrong = 0;
     const startTs = Date.now();
 
     const session: Session = {
@@ -101,7 +113,11 @@ export const assessmentModule: TrainingModule = {
           trialIdx++;
           return t;
         } else if (blockIdx === 2) {
-          if (trialIdx >= FLANKER_TRIALS) return null;
+          if (trialIdx >= FLANKER_TRIALS) {
+            blockIdx++;
+            trialIdx = 0;
+            return this.nextTrial();
+          }
           const ft = flankerTrials[trialIdx]!;
           const id = `assessment-flanker-${trialIdx}`;
           const t: Trial = {
@@ -115,6 +131,47 @@ export const assessmentModule: TrainingModule = {
           };
           trialIdx++;
           return t;
+        } else if (blockIdx === 3) {
+          if (dsSetIdx >= DIGIT_SPAN_SETS) return null;
+          if (dsPhase === 'present') {
+            if (dsDigitIdx === 0) {
+              dsCurrentSeq = generateDigitSequence(dsSpan);
+              dsFoil = generateFoil(dsCurrentSeq);
+              dsCorrectOption = Math.random() < 0.5 ? 1 : 2;
+            }
+            const t: Trial = {
+              id: `assessment-ds-present-${dsSetIdx}-${dsDigitIdx}`,
+              blockIndex: blockIdx,
+              trialIndex: trialIdx,
+              stimulus: { kind: 'digit-span-present', payload: { digit: dsCurrentSeq[dsDigitIdx]!, position: dsDigitIdx, total: dsSpan } },
+              metadata: {},
+              inputSpec: { accept: ['keyboard'], keys: [] },
+              timingSpec: { stimulusMs: 800, isiMs: 200 }
+            };
+            dsDigitIdx++;
+            if (dsDigitIdx >= dsSpan) {
+              dsPhase = 'probe';
+              dsDigitIdx = 0;
+            }
+            trialIdx++;
+            return t;
+          } else {
+            const opt1 = dsCorrectOption === 1 ? dsCurrentSeq : dsFoil;
+            const opt2 = dsCorrectOption === 2 ? dsCurrentSeq : dsFoil;
+            const t: Trial = {
+              id: `assessment-ds-probe-${dsSetIdx}`,
+              blockIndex: blockIdx,
+              trialIndex: trialIdx,
+              stimulus: { kind: 'digit-span-probe', payload: { option1: opt1, option2: opt2, correctOption: dsCorrectOption } },
+              metadata: { correctKey: String(dsCorrectOption) },
+              inputSpec: { accept: ['keyboard'], keys: ['1', '2'], timeoutMs: 10000 },
+              timingSpec: { preMs: 500, stimulusMs: 'until-response' }
+            };
+            dsPhase = 'present';
+            dsSetIdx++;
+            trialIdx++;
+            return t;
+          }
         }
         return null;
       },
@@ -157,6 +214,20 @@ export const assessmentModule: TrainingModule = {
             rtMs: isValid ? rtMs : null,
             scored: isValid ? { validRT: 1 } : { validRT: 0 }
           };
+        } else if (resp.trialId.startsWith('assessment-ds-present-')) {
+          return { trialId: resp.trialId, correct: null, rtMs: null, scored: {} };
+        } else if (resp.trialId.startsWith('assessment-ds-probe-')) {
+          const correct = String(resp.event.value) === String(dsCorrectOption);
+          if (correct) {
+            dsMaxSpan = Math.max(dsMaxSpan, dsSpan);
+            dsSpan++;
+            dsConsecutiveWrong = 0;
+          } else {
+            dsConsecutiveWrong++;
+            if (dsConsecutiveWrong >= 2 && dsSpan > 3) dsSpan--;
+            if (dsConsecutiveWrong < 2) dsConsecutiveWrong = 0;
+          }
+          return { trialId: resp.trialId, correct, rtMs: resp.event.rtMs || null, scored: { correct: correct ? 1 : 0 } };
         } else if (resp.trialId.startsWith('assessment-flanker-')) {
           const idx = parseInt(resp.trialId.split('-').pop()!);
           const ft = flankerTrials[idx]!;
@@ -186,6 +257,13 @@ export const assessmentModule: TrainingModule = {
             trialsCompleted: trialIdx,
             accuracy: trialIdx > 0 ? correct / trialIdx : 0,
             custom: {}
+          };
+        } else if (blockIdx === 3) {
+          return {
+            blockIndex: blockIdx,
+            trialsCompleted: dsSetIdx,
+            accuracy: 0,
+            custom: { maxSpan: dsMaxSpan, currentSpan: dsSpan }
           };
         } else {
           const rts = blockRTs[blockIdx] ?? [];
@@ -232,6 +310,12 @@ export const assessmentModule: TrainingModule = {
             taskId: 'flanker-inhibition',
             score: flankerResult.conflictCost,
             raw: { ...flankerResult, validTrials: flankerRTs.length, totalTrials: FLANKER_TRIALS }
+          }),
+          saveTransferAssessment({
+            ts: now,
+            taskId: 'digit-span',
+            score: dsMaxSpan,
+            raw: { maxSpan: dsMaxSpan, totalSets: DIGIT_SPAN_SETS }
           })
         ]).catch(e => console.error('Failed to save transfer assessment:', e));
 
@@ -254,6 +338,12 @@ export const assessmentModule: TrainingModule = {
               trialsCompleted: FLANKER_TRIALS,
               accuracy: flankerResult.accuracy,
               custom: { conflictCost: flankerResult.conflictCost }
+            },
+            {
+              blockIndex: 3,
+              trialsCompleted: DIGIT_SPAN_SETS,
+              accuracy: 0,
+              custom: { maxSpan: dsMaxSpan }
             }
           ],
           totalDurationMs: Date.now() - startTs,

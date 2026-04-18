@@ -114,7 +114,8 @@ async function loadResults(sessionId: string) {
 const TRANSFER_TASKS: Array<{ id: string; label: string; lowerIsBetter: boolean; fmt: (v: number) => string }> = [
   { id: 'matrix-reasoning', label: 'Matrix Reasoning', lowerIsBetter: false, fmt: v => `${(v * 100).toFixed(0)}%` },
   { id: 'simple-rt', label: 'Simple Reaction Time', lowerIsBetter: true, fmt: v => `${Math.round(v)}ms` },
-  { id: 'flanker-inhibition', label: 'Flanker (Inhibition)', lowerIsBetter: true, fmt: v => `${Math.round(v)}ms` }
+  { id: 'flanker-inhibition', label: 'Flanker (Inhibition)', lowerIsBetter: true, fmt: v => `${Math.round(v)}ms` },
+  { id: 'digit-span', label: 'Digit Span (STM)', lowerIsBetter: false, fmt: v => `span ${Math.round(v)}` }
 ];
 
 function TransferSection(props: { history: Record<string, TransferHistRow[]> }) {
