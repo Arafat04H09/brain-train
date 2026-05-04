@@ -11,7 +11,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const MMLU_DIR = process.env.MMLU_DIR || 'C:/Users/arafa/AppData/Local/Temp/mmlu/data/test';
+const MMLU_DIR = process.env.MMLU_DIR || './data/mmlu/test';
 const OUTPUT_PATH = resolve(import.meta.dirname, '../src/core/modules/calibration/items.json');
 
 // Map MMLU's 57 subjects to our 5 buckets.
